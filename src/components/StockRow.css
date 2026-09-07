@@ -1,0 +1,63 @@
+.stock-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.stock-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.stock-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.stock-percentage {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.stock-percentage.profit {
+  color: var(--color-success);
+}
+
+.stock-percentage.loss {
+  color: var(--color-error);
+}
+
+.stock-price-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stock-price {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.stock-indicator {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profit-bg {
+  background-color: rgba(0, 200, 83, 0.1);
+  color: var(--color-success);
+}
+
+.loss-bg {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: var(--color-error);
+}

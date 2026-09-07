@@ -1,0 +1,32 @@
+.floating-settings-btn {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  background-color: var(--color-primary);
+  border-radius: 24px 0 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.2);
+  z-index: 90;
+  transition: all 0.3s;
+  padding-right: 8px; /* Offset for the rounded left side */
+}
+
+.floating-settings-btn:hover {
+  background-color: var(--color-primary-light);
+  width: 56px;
+}
+
+.floating-settings-btn svg {
+  animation: spin 4s linear infinite;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
