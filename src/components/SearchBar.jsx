@@ -1,102 +1,25 @@
-import React, { useState, useRef } from 'react';
-import { Search, Settings, X, Check } from 'lucide-react';
-import { useClickOutside } from '../hooks/useClickOutside';
+import React, { useState } from 'react';
+import { Search, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { apiRequest } from '../lib/auth';
 import './SearchBar.css';
 
-const SearchBar = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [activeFilter, setActiveFilter] = useState('All');
-  const [isSearching, setIsSearching] = useState(false);
-  const [noResults, setNoResults] = useState(false);
-  
-  const filterRef = useRef(null);
-  
-  useClickOutside(filterRef, () => setIsFilterOpen(false));
-
-  const filters = ['All', 'Income', 'Orders', 'Users', 'Stocks'];
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (!searchTerm.trim()) return;
-    
-    setIsSearching(true);
-    // Simulate search delay
-    setTimeout(() => {
-      setIsSearching(false);
-      setNoResults(true); // Always show no results as it's a dummy dashboard
-    }, 500);
+export default function SearchBar() {
+  const [searchTerm, setSearchTerm] = useState(''); const [results, setResults] = useState([]); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  const handleSearch = async (event) => {
+    event.preventDefault(); if (!searchTerm.trim()) return;
+    setBusy(true); setMessage('');
+    try { const result = await apiRequest(`/customers?limit=5&search=${encodeURIComponent(searchTerm.trim())}`); setResults(result.items || []); setMessage(result.items?.length ? '' : 'No matching customers.'); }
+    catch (error) { setResults([]); setMessage(error.message); }
+    finally { setBusy(false); }
   };
-
-  const clearSearch = () => {
-    setSearchTerm('');
-    setNoResults(false);
-  };
-
-  return (
-    <div className="search-bar-container">
-      <form className="search-bar" onSubmit={handleSearch}>
-        <Search size={18} className="search-icon" />
-        
-        <input 
-          type="text" 
-          placeholder="Search..." 
-          className="search-input" 
-          value={searchTerm}
-          onChange={(e) => {
-            setSearchTerm(e.target.value);
-            setNoResults(false);
-          }}
-        />
-        
-        {searchTerm && (
-          <button type="button" className="clear-search-btn" onClick={clearSearch}>
-            <X size={14} />
-          </button>
-        )}
-
-        <div className="search-filter-wrapper" ref={filterRef}>
-          <button 
-            type="button" 
-            className="search-filter-btn"
-            onClick={() => setIsFilterOpen(!isFilterOpen)}
-            aria-label="Search filters"
-          >
-            <Settings size={16} />
-          </button>
-          
-          {isFilterOpen && (
-            <div className="dropdown-menu filter-dropdown">
-              <div className="dropdown-header">Search In</div>
-              <ul className="dropdown-list">
-                {filters.map(filter => (
-                  <li key={filter}>
-                    <button 
-                      type="button"
-                      className={`dropdown-item ${activeFilter === filter ? 'active' : ''}`}
-                      onClick={() => {
-                        setActiveFilter(filter);
-                        setIsFilterOpen(false);
-                      }}
-                    >
-                      <span>{filter}</span>
-                      {activeFilter === filter && <Check size={16} className="check-icon" />}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </form>
-      
-      {noResults && (
-        <div className="search-results-popup">
-          <p>No results found for "{searchTerm}" in {activeFilter}</p>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default SearchBar;
+  const clearSearch = () => { setSearchTerm(''); setResults([]); setMessage(''); };
+  return <div className="search-bar-container"><form className="search-bar" onSubmit={handleSearch}>
+    <Search size={18} className="search-icon" /><input type="search" placeholder="Search customers..." aria-label="Search customers" className="search-input" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} />
+    {searchTerm && <button type="button" className="clear-search-btn" onClick={clearSearch} aria-label="Clear search"><X size={14} /></button>}
+    <button type="submit" className="search-filter-btn" aria-label="Run search" disabled={busy}>{busy ? '…' : <Search size={16} />}</button>
+  </form>
+  {(results.length > 0 || message) && <div className="search-results-popup" role="status">{message || results.map((customer) => <button key={customer.id} type="button" className="search-result-item" onClick={() => { navigate('/customers'); clearSearch(); }}><strong>{customer.name}</strong><small>{customer.email || customer.company_name || 'Customer'}</small></button>)}</div>}
+  </div>;
+}

@@ -1,6 +1,5 @@
-import React, { createContext, useState, useEffect } from 'react';
-
-export const SettingsContext = createContext();
+import React, { useState, useEffect } from 'react';
+import { SettingsContext } from './SettingsContextValue';
 
 export const SettingsProvider = ({ children }) => {
   const [settings, setSettings] = useState({

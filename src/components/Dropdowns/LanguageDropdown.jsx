@@ -4,7 +4,7 @@ import './Dropdown.css';
 
 const LanguageDropdown = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedLang, setSelectedLang] = useState('English');
+  const [selectedLang, setSelectedLang] = useState(() => localStorage.getItem('berry.locale') || 'en');
   const dropdownRef = useRef(null);
 
   useClickOutside(dropdownRef, () => setIsOpen(false));
@@ -25,7 +25,7 @@ const LanguageDropdown = () => {
       >
         <div className="btn-inner">
           <span className="lang-icon">
-            {languages.find(l => l.name === selectedLang)?.icon} / A
+            {languages.find((language) => language.code === selectedLang)?.icon || 'A'} / A
           </span>
         </div>
       </button>
@@ -36,9 +36,11 @@ const LanguageDropdown = () => {
             {languages.map((lang) => (
               <li key={lang.code}>
                 <button
-                  className={`dropdown-item ${selectedLang === lang.name ? 'active' : ''}`}
+                  className={`dropdown-item ${selectedLang === lang.code ? 'active' : ''}`}
                   onClick={() => {
-                    setSelectedLang(lang.name);
+                    setSelectedLang(lang.code);
+                    localStorage.setItem('berry.locale', lang.code);
+                    document.documentElement.lang = lang.code;
                     setIsOpen(false);
                   }}
                 >

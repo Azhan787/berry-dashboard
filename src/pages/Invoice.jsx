@@ -1,172 +1,148 @@
-import React, { useState } from 'react';
-import { Search, Plus, Eye, Pencil, Trash2, X, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Search, Plus, Eye, Pencil, Download, CreditCard, Send, Ban, X, Trash2 } from 'lucide-react';
 import './pages.css';
+import { apiRequest, getActiveOrganizationId, readSession } from '../lib/auth';
+import { useAuth } from '../contexts/AuthContextValue';
+import { calculateInvoiceTotals, formatCents, getDiscountValidationError, getInvoiceItemValidationError } from '../../shared/invoicePricing.js';
+import { addInvoiceItem, createInvoiceItem, removeInvoiceItem, selectInvoiceProduct, updateInvoiceItem } from '../../shared/invoiceItems.js';
 
-const initialInvoices = [
-  { id: 'INV-001', customer: 'John Smith', date: '2026-09-01', amount: '$1,200.00', status: 'Paid' },
-  { id: 'INV-002', customer: 'Sarah Connor', date: '2026-09-03', amount: '$850.00', status: 'Pending' },
-  { id: 'INV-003', customer: 'Mike Johnson', date: '2026-09-05', amount: '$2,400.00', status: 'Paid' },
-  { id: 'INV-004', customer: 'Emma Watson', date: '2026-09-06', amount: '$560.00', status: 'Overdue' },
-  { id: 'INV-005', customer: 'Robert Brown', date: '2026-09-07', amount: '$1,800.00', status: 'Pending' },
-  { id: 'INV-006', customer: 'Linda Davis', date: '2026-08-28', amount: '$3,200.00', status: 'Paid' },
-  { id: 'INV-007', customer: 'Chris Evans', date: '2026-08-25', amount: '$720.00', status: 'Overdue' },
-];
+const today = () => new Date().toISOString().slice(0, 10);
+const addDays = (days) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+const statusLabel = (row) => ['issued', 'partial'].includes(row.status) && row.due_date < today() ? 'overdue' : row.status;
+const badge = (status) => `badge ${{ paid: 'badge-success', partial: 'badge-warning', overdue: 'badge-error', issued: 'badge-info', draft: 'badge-info', cancelled: 'badge-error' }[status] || 'badge-info'}`;
+const formatMoney = (amount, currency) => new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD' }).format(Number(amount || 0));
+const blankInvoice = (currency) => ({ customer_id: '', currency: currency || 'USD', issue_date: today(), due_date: addDays(30), items: [createInvoiceItem()], discount_type: 'fixed', discount_value: '0.00', tax_amount: '0.00', notes: '', terms: '' });
+const blankProduct = (currency) => ({ name: '', description: '', sku: '', unit_price: '0.00', currency: currency || 'USD' });
 
-const statusBadge = (status) => {
-  const map = { Paid: 'badge-success', Pending: 'badge-warning', Overdue: 'badge-error' };
-  return `badge ${map[status] || 'badge-info'}`;
-};
+export default function Invoice() {
+  const { activeOrganizationId, organizations } = useAuth();
+  const canManage = ['owner','admin','manager'].includes(organizations.find((item) => item.id === activeOrganizationId)?.role);
+  const [invoiceState, setInvoiceState] = useState({ organizationId: null, rows: [] });
+  const [customerState, setCustomerState] = useState({ organizationId: null, rows: [] });
+  const [productState, setProductState] = useState({ organizationId: null, rows: [] });
+  const [catalogError, setCatalogError] = useState('');
+  const [search, setSearch] = useState(''); const [status, setStatus] = useState('All');
+  const [mode, setMode] = useState(''); const [editingId, setEditingId] = useState(null); const [selected, setSelected] = useState(null);
+  const [productEditor, setProductEditor] = useState(null); const [editingProductId, setEditingProductId] = useState(null); const [productDraft, setProductDraft] = useState(blankProduct());
+  const [productSearch, setProductSearch] = useState('');
+  const [draft, setDraft] = useState(blankInvoice()); const [payment, setPayment] = useState({ amount: '', currency: 'USD', method: 'bank_transfer', reference: '', payment_date: today() });
+  const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
+  const invoices = invoiceState.organizationId === activeOrganizationId ? invoiceState.rows : [];
+  const customers = customerState.organizationId === activeOrganizationId ? customerState.rows : [];
+  const products = productState.organizationId === activeOrganizationId ? productState.rows : [];
+  const selectedProductIds = new Set(draft.items.map((item) => item.product_id).filter(Boolean));
+  const matchingProducts = products.filter((product) => product.currency === draft.currency && (selectedProductIds.has(product.id) || `${product.name} ${product.sku || ''}`.toLowerCase().includes(productSearch.trim().toLowerCase())));
+  const loading = invoiceState.organizationId !== activeOrganizationId;
+  const defaultCurrency = organizations.find((organization) => organization.id === activeOrganizationId)?.default_currency || 'USD';
+  const invoiceTotals = calculateInvoiceTotals({ items: draft.items, discountType: draft.discount_type, discountValue: draft.discount_value, taxAmount: draft.tax_amount });
+  const invoiceItemValidationError = getInvoiceItemValidationError(draft.items);
+  const discountValidationError = getDiscountValidationError(invoiceTotals, draft.discount_type, draft.discount_value, draft.currency);
 
-const Invoice = () => {
-  const [invoices, setInvoices] = useState(initialInvoices);
-  const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState('id');
-  const [sortAsc, setSortAsc] = useState(true);
-  const [filterStatus, setFilterStatus] = useState('All');
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ customer: '', date: '', amount: '', status: 'Paid' });
-  const [page, setPage] = useState(1);
-  const PER_PAGE = 5;
-
-  const handleSort = (key) => {
-    if (sortKey === key) setSortAsc(!sortAsc);
-    else { setSortKey(key); setSortAsc(true); }
+  const load = async () => {
+    const [invoiceRows, customerRows] = await Promise.all([apiRequest('/invoices'), apiRequest('/customers?limit=100&page=1')]);
+    let productRows = [];
+    try { productRows = await apiRequest('/products'); setCatalogError(''); }
+    catch { setCatalogError('Product catalogue is unavailable. Apply the product catalogue migration to enable product management and selection. Custom invoice items remain available.'); }
+    setInvoiceState({ organizationId: activeOrganizationId, rows: invoiceRows || [] });
+    setCustomerState({ organizationId: activeOrganizationId, rows: customerRows.items || [] });
+    setProductState({ organizationId: activeOrganizationId, rows: productRows || [] });
   };
+  useEffect(() => {
+    let active = true;
+    Promise.all([apiRequest('/invoices'), apiRequest('/customers?limit=100&page=1'), apiRequest('/products').then((rows) => ({ rows, error: '' })).catch(() => ({ rows: [], error: 'Product catalogue is unavailable. Apply the product catalogue migration to enable product management and selection. Custom invoice items remain available.' }))]).then(([invoiceRows, customerRows, catalog]) => {
+      if (active) { setInvoiceState({ organizationId: activeOrganizationId, rows: invoiceRows || [] }); setCustomerState({ organizationId: activeOrganizationId, rows: customerRows.items || [] }); setProductState({ organizationId: activeOrganizationId, rows: catalog.rows || [] }); setCatalogError(catalog.error); setError(''); }
+    }).catch((err) => { if (active) setError(err.message); });
+    return () => { active = false; };
+  }, [activeOrganizationId]);
 
-  const filtered = invoices
-    .filter(i =>
-      (filterStatus === 'All' || i.status === filterStatus) &&
-      (i.id.toLowerCase().includes(search.toLowerCase()) ||
-        i.customer.toLowerCase().includes(search.toLowerCase()))
-    )
-    .sort((a, b) => {
-      const va = a[sortKey] || '', vb = b[sortKey] || '';
-      return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
-    });
-
-  const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const totalPages = Math.ceil(filtered.length / PER_PAGE);
-
-  const addInvoice = () => {
-    const newId = `INV-${String(invoices.length + 1).padStart(3, '0')}`;
-    setInvoices([{ id: newId, ...form }, ...invoices]);
-    setShowModal(false);
-    setForm({ customer: '', date: '', amount: '', status: 'Paid' });
+  const visible = invoices.filter((row) => (status === 'All' || statusLabel(row) === status) && `${row.invoice_number} ${row.customers?.name || ''}`.toLowerCase().includes(search.toLowerCase()));
+  const startCreate = () => { setEditingId(null); setDraft(blankInvoice(defaultCurrency)); setProductSearch(''); setMode('editor'); setError(''); };
+  const startEdit = async (id) => {
+    setBusy(true); setError('');
+    try { const row = await apiRequest(`/invoices/${id}`); if (row.status !== 'draft') throw new Error('Only draft invoices can be edited.'); setEditingId(id); setDraft({ customer_id: row.customer_id, currency: row.currency, issue_date: row.issue_date, due_date: row.due_date, items: row.items.map((item) => ({ product_id: item.product_id || undefined, description: item.description, quantity: String(item.quantity), unit_price: Number(item.unit_price).toFixed(2) })), discount_type: 'fixed', discount_value: Number(row.discount_amount).toFixed(2), tax_amount: Number(row.tax_amount).toFixed(2), notes: row.notes || '', terms: row.terms || '' }); setMode('editor'); }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
   };
+  const saveDraft = async (event) => {
+    event.preventDefault(); setError('');
+    if (invoiceItemValidationError) { setError(invoiceItemValidationError); return; }
+    if (discountValidationError) { setError(discountValidationError); return; }
+    if (!invoiceTotals) { setError('Enter valid quantities, prices, discount, and tax amounts.'); return; }
+    setBusy(true);
+    try {
+      const invoiceFields = { ...draft };
+      delete invoiceFields.discount_type;
+      delete invoiceFields.discount_value;
+      const path = editingId ? `/invoices/${editingId}` : '/invoices';
+      await apiRequest(path, { method: editingId ? 'PATCH' : 'POST', body: { ...invoiceFields, discount_amount: formatCents(invoiceTotals.discountCents), items: draft.items.map((item) => ({ ...item, description: item.description.trim() })) } });
+      setMode(''); setNotice(editingId ? 'Draft invoice updated.' : 'Draft invoice created.'); await load();
+    }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+  const performInvoiceAction = async (id, action, successMessage) => {
+    setBusy(true); setError('');
+    try { await apiRequest(`/invoices/${id}/${action}`, { method: 'POST' }); setNotice(successMessage); await load(); if (mode === 'details') { const updated = await apiRequest(`/invoices/${id}`); setSelected(updated); } }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+  const openDetails = async (id) => { setBusy(true); setError(''); try { setSelected(await apiRequest(`/invoices/${id}`)); setMode('details'); } catch (err) { setError(err.message); } finally { setBusy(false); } };
+  const openPayment = (row) => { setSelected(row); setPayment({ amount: Number(row.balance_due).toFixed(2), currency: row.currency, method: 'bank_transfer', reference: '', payment_date: today() }); setMode('payment'); };
+  const recordPayment = async (event) => {
+    event.preventDefault(); setBusy(true); setError('');
+    try { await apiRequest(`/invoices/${selected.id}/payments`, { method: 'POST', body: payment, headers: { 'Idempotency-Key': crypto.randomUUID() } }); setMode(''); setNotice('Payment recorded.'); await load(); }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+  const sendInvoice = async (row) => {
+    setBusy(true); setError('');
+    try { await apiRequest(`/invoices/${row.id}/send`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() } }); setNotice(`Invoice ${row.invoice_number} emailed to the customer.`); }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+  const downloadPdf = async (row) => {
+    setBusy(true); setError('');
+    try {
+      const session = readSession(); const orgId = getActiveOrganizationId();
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1'}/invoices/${row.id}/pdf`, { headers: { Authorization: `Bearer ${session?.access_token || ''}`, 'X-Organization-Id': orgId || '' } });
+      if (!response.ok) { const result = await response.json(); throw new Error(result.message || 'Invoice download failed.'); }
+      const objectUrl = URL.createObjectURL(await response.blob()); const link = document.createElement('a'); link.href = objectUrl; link.download = `${row.invoice_number}.pdf`; link.click(); URL.revokeObjectURL(objectUrl);
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+  const updateLine = (index, key, value) => setDraft((current) => ({ ...current, items: updateInvoiceItem(current.items, index, key, value) }));
+  const selectProduct = (index, productId) => setDraft((current) => ({ ...current, items: selectInvoiceProduct(current.items, index, productId, products) }));
+  const openProductEditor = (product) => { setEditingProductId(product?.id || null); setProductDraft(product ? { name: product.name, description: product.description || '', sku: product.sku || '', unit_price: Number(product.unit_price).toFixed(2), currency: product.currency } : blankProduct(defaultCurrency)); setProductEditor(true); };
+  const saveProduct = async (event) => {
+    event.preventDefault(); setBusy(true); setError('');
+    try { await apiRequest(editingProductId ? `/products/${editingProductId}` : '/products', { method: editingProductId ? 'PATCH' : 'POST', body: productDraft }); setNotice(editingProductId ? 'Product updated.' : 'Product created.'); setProductEditor(false); setEditingProductId(null); await load(); }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+  const archiveProduct = async (product) => {
+    if (!window.confirm(`Archive ${product.name}? Existing invoice descriptions and prices will remain unchanged.`)) return;
+    setBusy(true); setError('');
+    try { await apiRequest(`/products/${product.id}`, { method: 'DELETE' }); setNotice('Product archived.'); await load(); }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+  const previewTotal = invoiceTotals ? formatCents(invoiceTotals.totalCents) : '0.00';
 
-  const deleteInvoice = (id) => setInvoices(invoices.filter(i => i.id !== id));
-
-  const SortIcon = ({ col }) => sortKey === col
-    ? (sortAsc ? <ChevronUp size={14} /> : <ChevronDown size={14} />)
-    : null;
-
-  return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Invoice</h1>
-          <p className="page-subtitle">Manage all your invoices</p>
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-          <Plus size={16} /> New Invoice
-        </button>
-      </div>
-
-      <div className="table-card">
-        <div className="table-card-header">
-          <div className="table-card-title">All Invoices ({filtered.length})</div>
-          <div className="table-actions">
-            <div className="search-input-wrap">
-              <Search size={16} color="#64748b" />
-              <input placeholder="Search invoices..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
-            </div>
-            <select className="select-input" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}>
-              {['All', 'Paid', 'Pending', 'Overdue'].map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th onClick={() => handleSort('id')}>Invoice ID <SortIcon col="id" /></th>
-                <th onClick={() => handleSort('customer')}>Customer <SortIcon col="customer" /></th>
-                <th onClick={() => handleSort('date')}>Date <SortIcon col="date" /></th>
-                <th onClick={() => handleSort('amount')}>Amount <SortIcon col="amount" /></th>
-                <th onClick={() => handleSort('status')}>Status <SortIcon col="status" /></th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginated.map(inv => (
-                <tr key={inv.id}>
-                  <td style={{ color: 'var(--color-primary-light)', fontWeight: 600 }}>{inv.id}</td>
-                  <td style={{ color: 'var(--text-primary)' }}>{inv.customer}</td>
-                  <td>{inv.date}</td>
-                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{inv.amount}</td>
-                  <td><span className={statusBadge(inv.status)}>{inv.status}</span></td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button className="btn btn-secondary btn-icon btn-sm" title="View"><Eye size={14} /></button>
-                      <button className="btn btn-secondary btn-icon btn-sm" title="Edit"><Pencil size={14} /></button>
-                      <button className="btn btn-danger btn-icon btn-sm" title="Delete" onClick={() => deleteInvoice(inv.id)}><Trash2 size={14} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="pagination">
-          <span className="pagination-info">Showing {Math.min((page - 1) * PER_PAGE + 1, filtered.length)}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length}</span>
-          <div className="pagination-btns">
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-              <button key={p} className={`page-btn ${p === page ? 'active' : ''}`} onClick={() => setPage(p)}>{p}</button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {showModal && (
-        <div className="modal-backdrop" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">New Invoice</span>
-              <button className="btn btn-secondary btn-icon" onClick={() => setShowModal(false)}><X size={18} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Customer Name</label>
-                  <input className="form-input" value={form.customer} onChange={e => setForm({ ...form, customer: e.target.value })} placeholder="Customer name" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Date</label>
-                  <input type="date" className="form-input" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Amount</label>
-                  <input className="form-input" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="$0.00" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Status</label>
-                  <select className="form-input" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
-                    {['Paid', 'Pending', 'Overdue'].map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={addInvoice}>Create Invoice</button>
-            </div>
-          </div>
-        </div>
-      )}
+  return <div>
+    <div className="page-header"><div><h1 className="page-title">Invoices</h1><p className="page-subtitle">Create, issue, and track organization invoices.</p></div><div className="invoice-header-actions">{canManage && <button className="btn btn-secondary" disabled={Boolean(catalogError)} title={catalogError || ''} onClick={() => { setMode('catalog'); setProductEditor(false); }}><CreditCard size={15} /> Products & services</button>}{canManage && <button className="btn btn-primary" onClick={startCreate}><Plus size={16} /> New invoice</button>}</div></div>
+    {catalogError && <div role="status" className="invoice-catalog-warning">{catalogError}</div>}
+    {error && <div role="alert" className="dashboard-state dashboard-error">{error}</div>}{notice && <div role="status" className="invoice-notice">{notice}</div>}
+    <div className="table-card"><div className="table-card-header"><div className="table-card-title">Invoice List ({visible.length})</div><div className="table-actions"><div className="search-input-wrap"><Search size={16} color="#64748b" /><input placeholder="Search invoices..." value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="select-input" value={status} onChange={(event) => setStatus(event.target.value)}>{['All', 'draft', 'issued', 'partial', 'paid', 'overdue', 'cancelled'].map((value) => <option key={value} value={value}>{value === 'All' ? 'All statuses' : value}</option>)}</select></div></div>
+      <div className="table-responsive"><table className="data-table"><thead><tr><th>Invoice ID</th><th>Customer</th><th>Issue date</th><th>Due date</th><th>Amount</th><th>Balance</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+        {visible.map((row) => { const rowStatus = statusLabel(row); return <tr key={row.id}><td style={{ color: 'var(--color-primary-light)', fontWeight: 600 }}>{row.invoice_number}</td><td style={{ color: 'var(--text-primary)' }}>{row.customers?.name || '—'}</td><td>{row.issue_date}</td><td>{row.due_date}</td><td>{formatMoney(row.total_amount, row.currency)}</td><td>{formatMoney(row.balance_due, row.currency)}</td><td><span className={badge(rowStatus)}>{rowStatus}</span></td><td><div className="invoice-actions"><button className="btn btn-secondary btn-icon btn-sm" title="View details" onClick={() => openDetails(row.id)}><Eye size={14} /></button>{canManage && row.status === 'draft' && <><button className="btn btn-secondary btn-icon btn-sm" title="Edit draft" onClick={() => startEdit(row.id)}><Pencil size={14} /></button><button className="btn btn-secondary btn-icon btn-sm" title="Issue invoice" onClick={() => { if (window.confirm('Issue this invoice? Issued financial details cannot be edited.')) performInvoiceAction(row.id, 'issue', 'Invoice issued.'); }}><Send size={14} /></button></>}{canManage && ['issued', 'partial', 'overdue'].includes(rowStatus) && <button className="btn btn-secondary btn-icon btn-sm" title="Record payment" onClick={() => openPayment(row)}><CreditCard size={14} /></button>}{!['draft', 'cancelled'].includes(row.status) && <><button className="btn btn-secondary btn-icon btn-sm" title="Download PDF" onClick={() => downloadPdf(row)}><Download size={14} /></button>{canManage && <button className="btn btn-secondary btn-icon btn-sm" title="Email invoice" onClick={() => sendInvoice(row)}><Send size={14} /></button>}</>}{canManage && ['draft', 'issued'].includes(row.status) && Number(row.amount_paid) === 0 && <button className="btn btn-danger btn-icon btn-sm" title="Cancel invoice" onClick={() => { if (window.confirm('Cancel this unpaid invoice?')) performInvoiceAction(row.id, 'cancel', 'Invoice cancelled.'); }}><Ban size={14} /></button>}</div></td></tr>; })}
+        {!loading && visible.length === 0 && <tr><td colSpan="8">{search || status !== 'All' ? 'No invoices match these filters.' : 'No invoices yet. Create a draft invoice to get started.'}</td></tr>}{loading && <tr><td colSpan="8">Loading invoices…</td></tr>}
+      </tbody></table></div>
     </div>
-  );
-};
 
-export default Invoice;
+    {mode === 'editor' && <div className="modal-backdrop" onClick={() => !busy && setMode('')}><form className="modal invoice-modal" onSubmit={saveDraft} onClick={(event) => event.stopPropagation()}><div className="modal-header"><span className="modal-title">{editingId ? 'Edit draft invoice' : 'New invoice draft'}</span><button type="button" className="btn btn-secondary btn-icon" onClick={() => setMode('')}><X size={18} /></button></div><div className="modal-body"><div className="form-grid-2"><div className="form-group"><label className="form-label">Customer</label><select required className="form-input" value={draft.customer_id} onChange={(e) => setDraft({ ...draft, customer_id: e.target.value })}><option value="">Select a customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></div><div className="form-group"><label className="form-label">Currency</label><select className="form-input" value={draft.currency} onChange={(e) => setDraft((current) => ({ ...current, currency: e.target.value, items: current.items.map((item) => { const customItem = { ...item }; delete customItem.product_id; return customItem; }) }))}>{['USD', 'CAD', 'GBP', 'EUR'].map((currency) => <option key={currency}>{currency}</option>)}</select></div><div className="form-group"><label className="form-label">Issue date</label><input required type="date" className="form-input" value={draft.issue_date} onChange={(e) => setDraft({ ...draft, issue_date: e.target.value })} /></div><div className="form-group"><label className="form-label">Due date</label><input required type="date" className="form-input" value={draft.due_date} min={draft.issue_date} onChange={(e) => setDraft({ ...draft, due_date: e.target.value })} /></div></div>{customers.length === 0 && <div role="status" className="invoice-catalog-warning">Add a customer before saving an invoice. <Link to="/customers">Go to Customers</Link></div>}
+      <div className="invoice-item-editor"><div className="invoice-item-heading"><strong>Line items</strong><button type="button" className="btn btn-secondary btn-sm" onClick={() => setDraft((current) => ({ ...current, items: addInvoiceItem(current.items) }))}><Plus size={14} /> Add item</button></div><div className="invoice-product-search"><Search size={14} /><input className="form-input" aria-label="Search products" placeholder="Search products by name or SKU" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} /></div>{draft.items.map((item, index) => <div className="invoice-item-row" key={index}><select className="form-input invoice-product-select" aria-label="Product or custom item" value={item.product_id || ''} onChange={(event) => selectProduct(index, event.target.value)}><option value="">Custom item</option>{matchingProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · {formatMoney(product.unit_price, product.currency)}</option>)}</select><input required maxLength="500" className="form-input" placeholder="Description" value={item.description} readOnly={Boolean(item.product_id)} onChange={(e) => updateLine(index, 'description', e.target.value)} /><input required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,3})?" className="form-input" aria-label="Quantity" value={item.quantity} onChange={(e) => updateLine(index, 'quantity', e.target.value)} /><input required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" className="form-input" aria-label="Unit price" value={item.unit_price} readOnly={Boolean(item.product_id)} onChange={(e) => updateLine(index, 'unit_price', e.target.value)} />{draft.items.length > 1 && <button type="button" className="btn btn-danger btn-icon btn-sm" aria-label="Remove line item" onClick={() => setDraft((current) => ({ ...current, items: removeInvoiceItem(current.items, index) }))}><Trash2 size={14} /></button>}</div>)}{invoiceItemValidationError && <small role="alert" className="form-error">{invoiceItemValidationError}</small>}</div>
+      <div className="form-grid-2"><div className="form-group"><label className="form-label" htmlFor="invoice-discount-type">Discount type</label><select id="invoice-discount-type" className="form-input" value={draft.discount_type} onChange={(e) => setDraft((current) => ({ ...current, discount_type: e.target.value }))}><option value="fixed">Fixed amount</option><option value="percentage">Percentage</option></select><input inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" max={draft.discount_type === 'percentage' ? '100' : undefined} aria-label={draft.discount_type === 'percentage' ? 'Discount percentage' : 'Discount amount'} className="form-input" value={draft.discount_value} onChange={(e) => setDraft((current) => ({ ...current, discount_value: e.target.value }))} /><small className="form-help">{draft.discount_type === 'percentage' ? 'Enter 0–100%; converted to a monetary amount before saving.' : 'Enter a currency amount.'}</small>{discountValidationError && <small role="alert" className="form-error">{discountValidationError}</small>}</div><div className="form-group"><label className="form-label">Tax amount</label><input inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" className="form-input" value={draft.tax_amount} onChange={(e) => setDraft((current) => ({ ...current, tax_amount: e.target.value }))} /></div><div className="form-group"><label className="form-label">Notes</label><textarea className="form-input" maxLength="2000" value={draft.notes} onChange={(e) => setDraft((current) => ({ ...current, notes: e.target.value }))} /></div><div className="form-group"><label className="form-label">Terms</label><textarea className="form-input" maxLength="2000" value={draft.terms} onChange={(e) => setDraft((current) => ({ ...current, terms: e.target.value }))} /></div></div><div className="invoice-preview-total">Estimated total · verified by server <strong>{formatMoney(previewTotal, draft.currency)}</strong></div>
+      </div><div className="modal-footer"><button type="button" className="btn btn-secondary" onClick={() => setMode('')}>Cancel</button><button type="submit" className="btn btn-primary" disabled={busy || customers.length === 0}>{busy ? 'Saving…' : 'Save draft'}</button></div></form></div>}
+
+    {mode === 'payment' && selected && <div className="modal-backdrop" onClick={() => !busy && setMode('')}><form className="modal" onSubmit={recordPayment} onClick={(event) => event.stopPropagation()}><div className="modal-header"><span className="modal-title">Record payment · {selected.invoice_number}</span><button type="button" className="btn btn-secondary btn-icon" onClick={() => setMode('')}><X size={18} /></button></div><div className="modal-body"><div className="form-grid-2"><div className="form-group"><label className="form-label">Amount due</label><div>{formatMoney(selected.balance_due, selected.currency)}</div></div><div className="form-group"><label className="form-label">Amount received</label><input required min="0.01" step="0.01" max={selected.balance_due} type="number" className="form-input" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} /></div><div className="form-group"><label className="form-label">Method</label><select className="form-input" value={payment.method} onChange={(e) => setPayment({ ...payment, method: e.target.value })}>{['bank_transfer', 'cash', 'check', 'other'].map((method) => <option key={method} value={method}>{method.replace('_', ' ')}</option>)}</select></div><div className="form-group"><label className="form-label">Payment date</label><input required max={today()} type="date" className="form-input" value={payment.payment_date} onChange={(e) => setPayment({ ...payment, payment_date: e.target.value })} /></div><div className="form-group"><label className="form-label">Reference (optional)</label><input maxLength="120" className="form-input" value={payment.reference} onChange={(e) => setPayment({ ...payment, reference: e.target.value })} /></div></div></div><div className="modal-footer"><button type="button" className="btn btn-secondary" onClick={() => setMode('')}>Cancel</button><button type="submit" className="btn btn-primary" disabled={busy}>Record payment</button></div></form></div>}
+
+    {mode === 'details' && selected && <div className="modal-backdrop" onClick={() => setMode('')}><div className="modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><span className="modal-title">{selected.invoice_number} · {selected.customers?.name}</span><button className="btn btn-secondary btn-icon" onClick={() => setMode('')}><X size={18} /></button></div><div className="modal-body"><p>{selected.status} · Due {selected.due_date} · Balance {formatMoney(selected.balance_due, selected.currency)}</p><div className="table-responsive"><table className="data-table"><thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Total</th></tr></thead><tbody>{selected.items?.map((item) => <tr key={item.id}><td>{item.description}</td><td>{item.quantity}</td><td>{formatMoney(item.unit_price, selected.currency)}</td><td>{formatMoney(item.line_total, selected.currency)}</td></tr>)}</tbody></table></div><h3>Payment history</h3>{selected.payments?.length ? selected.payments.map((row) => <p key={row.id}>{row.payment_date} · {formatMoney(row.amount, row.currency)} · {row.payment_method || 'manual'} {row.payment_reference ? `· ${row.payment_reference}` : ''}</p>) : <p>No payments recorded.</p>}</div><div className="modal-footer"><button className="btn btn-secondary" onClick={() => setMode('')}>Close</button></div></div></div>}
+
+    {mode === 'catalog' && <div className="modal-backdrop" onClick={() => !busy && setMode('')}><div className="modal invoice-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><span className="modal-title">Products & services</span><button className="btn btn-secondary btn-icon" onClick={() => { setMode(''); setProductEditor(false); }}><X size={18} /></button></div><div className="modal-body"><div className="invoice-catalog-heading"><p>Manage the organization catalogue used by invoice line items.</p><button className="btn btn-primary btn-sm" onClick={() => openProductEditor()}><Plus size={14} /> Add product</button></div>{products.length ? <div className="table-responsive"><table className="data-table"><thead><tr><th>Name</th><th>SKU</th><th>Price</th><th>Actions</th></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td>{product.name}{product.description && <small className="invoice-product-description">{product.description}</small>}</td><td>{product.sku || '—'}</td><td>{formatMoney(product.unit_price, product.currency)}</td><td><div className="invoice-actions"><button className="btn btn-secondary btn-icon btn-sm" aria-label={`Edit ${product.name}`} onClick={() => openProductEditor(product)}><Pencil size={14} /></button><button className="btn btn-danger btn-icon btn-sm" aria-label={`Archive ${product.name}`} onClick={() => archiveProduct(product)}><Trash2 size={14} /></button></div></td></tr>)}</tbody></table></div> : <p className="data-help">No active products or services yet.</p>}</div><div className="modal-footer"><button className="btn btn-secondary" onClick={() => setMode('')}>Close</button></div></div></div>}
+
+    {mode === 'catalog' && productEditor && <div className="modal-backdrop invoice-product-editor-backdrop" onClick={() => !busy && setProductEditor(false)}><form className="modal" onSubmit={saveProduct} onClick={(event) => event.stopPropagation()}><div className="modal-header"><span className="modal-title">{editingProductId ? 'Edit product or service' : 'Add product or service'}</span><button type="button" className="btn btn-secondary btn-icon" onClick={() => setProductEditor(false)}><X size={18} /></button></div><div className="modal-body"><div className="form-group"><label className="form-label">Name</label><input required maxLength="180" className="form-input" value={productDraft.name} onChange={(event) => setProductDraft({ ...productDraft, name: event.target.value })} /></div><div className="form-group"><label className="form-label">Description</label><textarea maxLength="1000" className="form-input" value={productDraft.description} onChange={(event) => setProductDraft({ ...productDraft, description: event.target.value })} /></div><div className="form-grid-2"><div className="form-group"><label className="form-label">SKU (optional)</label><input maxLength="80" className="form-input" value={productDraft.sku} onChange={(event) => setProductDraft({ ...productDraft, sku: event.target.value })} /></div><div className="form-group"><label className="form-label">Unit price</label><input required min="0" step="0.01" type="number" className="form-input" value={productDraft.unit_price} onChange={(event) => setProductDraft({ ...productDraft, unit_price: event.target.value })} /></div><div className="form-group"><label className="form-label">Currency</label><select className="form-input" value={productDraft.currency} onChange={(event) => setProductDraft({ ...productDraft, currency: event.target.value })}>{['USD','CAD','GBP','EUR'].map((currency) => <option key={currency}>{currency}</option>)}</select></div></div></div><div className="modal-footer"><button type="button" className="btn btn-secondary" onClick={() => setProductEditor(false)}>Cancel</button><button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save product'}</button></div></form></div>}
+  </div>;
+}

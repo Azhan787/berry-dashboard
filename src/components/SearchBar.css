@@ -56,3 +56,4 @@
   color: var(--text-secondary);
   font-size: 14px;
 }
+.search-result-item{display:flex;width:100%;flex-direction:column;gap:3px;padding:10px 12px;text-align:left;color:var(--text-primary);border-bottom:1px solid var(--border-color)}.search-result-item:hover{background:rgba(255,255,255,.05)}.search-result-item small{color:var(--text-muted)}.search-filter-btn:disabled{opacity:.6}

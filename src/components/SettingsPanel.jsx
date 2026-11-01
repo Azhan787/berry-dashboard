@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { X, Check } from 'lucide-react';
-import { SettingsContext } from '../contexts/SettingsContext';
+import { SettingsContext } from '../contexts/SettingsContextValue';
 import './SettingsPanel.css';
 
 const SettingsPanel = () => {

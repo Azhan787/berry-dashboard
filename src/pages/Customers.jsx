@@ -1,188 +1,65 @@
-import React, { useState } from 'react';
-import { Search, Plus, Pencil, Trash2, X, Users, DollarSign, ShoppingBag, Star } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Search, Plus, Trash2, X, Users, Pencil } from 'lucide-react';
 import './pages.css';
+import { apiRequest } from '../lib/auth';
+import { useAuth } from '../contexts/AuthContextValue';
 
-const custStats = [
-  { label: 'Total Customers', value: '5,241', icon: Users, bg: 'rgba(103,58,183,0.15)', color: '#673ab7' },
-  { label: 'Total Revenue', value: '$284k', icon: DollarSign, bg: 'rgba(0,200,83,0.15)', color: '#00c853' },
-  { label: 'Total Orders', value: '18,420', icon: ShoppingBag, bg: 'rgba(33,150,243,0.15)', color: '#2196f3' },
-  { label: 'VIP Customers', value: '312', icon: Star, bg: 'rgba(255,193,7,0.15)', color: '#ffc107' },
-];
+const PER_PAGE = 10;
+const statusBadge = (status) => `badge ${{ active: 'badge-success', inactive: 'badge-error', lead: 'badge-warning' }[status] || 'badge-info'}`;
 
-const avatarColors = ['#673ab7', '#2196f3', '#00c853', '#ffc107', '#f44336', '#e91e63', '#00bcd4'];
-
-const initialCustomers = [
-  { id: 1, name: 'John Smith', email: 'john@example.com', phone: '+1 555-1001', orders: 24, spent: '$4,820', status: 'Active' },
-  { id: 2, name: 'Sarah Connor', email: 'sarah@example.com', phone: '+1 555-1002', orders: 8, spent: '$1,240', status: 'Active' },
-  { id: 3, name: 'Mike Johnson', email: 'mike@example.com', phone: '+1 555-1003', orders: 51, spent: '$12,400', status: 'VIP' },
-  { id: 4, name: 'Emma Watson', email: 'emma@example.com', phone: '+1 555-1004', orders: 3, spent: '$380', status: 'Inactive' },
-  { id: 5, name: 'Robert Brown', email: 'robert@example.com', phone: '+1 555-1005', orders: 16, spent: '$3,100', status: 'Active' },
-  { id: 6, name: 'Linda Davis', email: 'linda@example.com', phone: '+1 555-1006', orders: 72, spent: '$22,000', status: 'VIP' },
-  { id: 7, name: 'Chris Evans', email: 'chris@example.com', phone: '+1 555-1007', orders: 5, spent: '$920', status: 'Active' },
-];
-
-const statusBadge = (s) => {
-  const map = { Active: 'badge-success', Inactive: 'badge-error', VIP: 'badge-warning' };
-  return `badge ${map[s] || 'badge-info'}`;
-};
-
-const PER_PAGE = 5;
-
-const Customers = () => {
-  const [customers, setCustomers] = useState(initialCustomers);
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('All');
-  const [showModal, setShowModal] = useState(false);
-  const [page, setPage] = useState(1);
-  const [form, setForm] = useState({ name: '', email: '', phone: '', orders: 0, spent: '$0', status: 'Active' });
-
-  const filtered = customers.filter(c =>
-    (filterStatus === 'All' || c.status === filterStatus) &&
-    (c.name.toLowerCase().includes(search.toLowerCase()) || c.email.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const totalPages = Math.ceil(filtered.length / PER_PAGE);
-
-  const addCustomer = () => {
-    setCustomers([{ id: Date.now(), ...form, orders: Number(form.orders) }, ...customers]);
-    setShowModal(false);
-    setForm({ name: '', email: '', phone: '', orders: 0, spent: '$0', status: 'Active' });
+export default function Customers() {
+  const { activeOrganizationId, organizations } = useAuth();
+  const canManage = ['owner','admin','manager'].includes(organizations.find((item) => item.id === activeOrganizationId)?.role);
+  const [customerState, setCustomerState] = useState({ organizationId: null, customers: [], total: 0 });
+  const loading = customerState.organizationId !== activeOrganizationId;
+  const customers = customerState.organizationId === activeOrganizationId ? customerState.customers : [];
+  const total = customerState.organizationId === activeOrganizationId ? customerState.total : 0;
+  const [search, setSearch] = useState(''); const [status, setStatus] = useState('All'); const [page, setPage] = useState(1);
+  const [showModal, setShowModal] = useState(false); const [editingId, setEditingId] = useState(null); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  const [form, setForm] = useState({ name: '', email: '', phone: '', company_name: '', status: 'lead' });
+  const load = useCallback(async () => {
+    try { const query = new URLSearchParams({ page, limit: PER_PAGE, search }); if (status !== 'All') query.set('status', status); const result = await apiRequest(`/customers?${query}`); setCustomerState({ organizationId: activeOrganizationId, customers: result.items || [], total: result.total || 0 }); }
+    catch (err) { setError(err.message); setCustomerState({ organizationId: activeOrganizationId, customers: [], total: 0 }); }
+    finally { setBusy(false); }
+  }, [activeOrganizationId, page, search, status]);
+  useEffect(() => {
+    let active = true;
+    const query = new URLSearchParams({ page, limit: PER_PAGE, search });
+    if (status !== 'All') query.set('status', status);
+    apiRequest(`/customers?${query}`).then((result) => {
+      if (active) setCustomerState({ organizationId: activeOrganizationId, customers: result.items || [], total: result.total || 0 });
+    }).catch((err) => {
+      if (active) { setError(err.message); setCustomerState({ organizationId: activeOrganizationId, customers: [], total: 0 }); }
+    });
+    return () => { active = false; };
+  }, [activeOrganizationId, page, search, status]);
+  const saveCustomer = async (event) => {
+    event.preventDefault(); setBusy(true); setError('');
+    try { await apiRequest(editingId ? `/customers/${editingId}` : '/customers', { method: editingId ? 'PATCH' : 'POST', body: form }); setShowModal(false); setEditingId(null); setForm({ name: '', email: '', phone: '', company_name: '', status: 'lead' }); setPage(1); await load(); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(false); }
   };
+  const startEdit = (customer) => { setEditingId(customer.id); setForm({ name: customer.name, email: customer.email || '', phone: customer.phone || '', company_name: customer.company_name || '', status: customer.status }); setShowModal(true); };
+  const deleteCustomer = async (id) => { const customer = customers.find((row) => row.id === id); if (!window.confirm(`Delete ${customer?.name || 'this customer'}?`)) return; setError(''); try { await apiRequest(`/customers/${id}`, { method: 'DELETE' }); await load(); } catch (err) { setError(err.message); } };
+  const pages = Math.ceil(total / PER_PAGE);
 
-  const deleteCustomer = (id) => setCustomers(customers.filter(c => c.id !== id));
-
-  return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Customers</h1>
-          <p className="page-subtitle">Manage your customer base and purchase history</p>
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-          <Plus size={16} /> Add Customer
-        </button>
-      </div>
-
-      <div className="stats-row">
-        {custStats.map(s => (
-          <div className="mini-stat-card" key={s.label}>
-            <div className="mini-stat-icon" style={{ backgroundColor: s.bg }}>
-              <s.icon size={22} color={s.color} />
-            </div>
-            <div>
-              <div className="mini-stat-value">{s.value}</div>
-              <div className="mini-stat-label">{s.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="table-card">
-        <div className="table-card-header">
-          <div className="table-card-title">Customer List ({filtered.length})</div>
-          <div className="table-actions">
-            <div className="search-input-wrap">
-              <Search size={16} color="#64748b" />
-              <input placeholder="Search customers..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
-            </div>
-            <select className="select-input" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}>
-              {['All', 'Active', 'Inactive', 'VIP'].map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Customer</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Orders</th>
-                <th>Total Spent</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginated.map((c, i) => (
-                <tr key={c.id}>
-                  <td>
-                    <div className="user-cell">
-                      <div className="avatar-sm" style={{ backgroundColor: avatarColors[i % avatarColors.length] }}>
-                        {c.name.charAt(0)}
-                      </div>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{c.name}</span>
-                    </div>
-                  </td>
-                  <td>{c.email}</td>
-                  <td>{c.phone}</td>
-                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.orders}</td>
-                  <td style={{ fontWeight: 600, color: 'var(--color-success)' }}>{c.spent}</td>
-                  <td><span className={statusBadge(c.status)}>{c.status}</span></td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button className="btn btn-secondary btn-icon btn-sm" title="Edit"><Pencil size={14} /></button>
-                      <button className="btn btn-danger btn-icon btn-sm" title="Delete" onClick={() => deleteCustomer(c.id)}><Trash2 size={14} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="pagination">
-          <span className="pagination-info">
-            Showing {Math.min((page - 1) * PER_PAGE + 1, filtered.length)}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length}
-          </span>
-          <div className="pagination-btns">
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-              <button key={p} className={`page-btn ${p === page ? 'active' : ''}`} onClick={() => setPage(p)}>{p}</button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {showModal && (
-        <div className="modal-backdrop" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Add Customer</span>
-              <button className="btn btn-secondary btn-icon" onClick={() => setShowModal(false)}><X size={18} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Full Name</label>
-                  <input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Full name" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Email</label>
-                  <input type="email" className="form-input" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Phone</label>
-                  <input className="form-input" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+1 555-0000" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Status</label>
-                  <select className="form-input" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
-                    {['Active', 'Inactive', 'VIP'].map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={addCustomer}>Add Customer</button>
-            </div>
-          </div>
-        </div>
-      )}
+  return <div>
+    <div className="page-header"><div><h1 className="page-title">Customers</h1><p className="page-subtitle">Manage customers in this workspace.</p></div>{canManage && <button className="btn btn-primary" onClick={() => { setEditingId(null); setForm({ name: '', email: '', phone: '', company_name: '', status: 'lead' }); setShowModal(true); }}><Plus size={16} /> Add Customer</button>}</div>
+    <div className="stats-row"><div className="mini-stat-card"><div className="mini-stat-icon" style={{ backgroundColor: 'rgba(103,58,183,.15)' }}><Users size={22} color="#673ab7" /></div><div><div className="mini-stat-value">{total.toLocaleString()}</div><div className="mini-stat-label">Customers</div></div></div></div>
+    {error && <div role="alert" className="dashboard-state dashboard-error">{error}</div>}
+    <div className="table-card"><div className="table-card-header"><div className="table-card-title">Customer List ({total})</div><div className="table-actions"><div className="search-input-wrap"><Search size={16} color="#64748b" /><input placeholder="Search customers..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} /></div><select className="select-input" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>{['All', 'lead', 'active', 'inactive'].map((item) => <option key={item} value={item}>{item === 'All' ? 'All statuses' : item[0].toUpperCase() + item.slice(1)}</option>)}</select></div></div>
+      <div className="table-responsive"><table className="data-table"><thead><tr><th>Customer</th><th>Email</th><th>Phone</th><th>Company</th><th>Status</th>{canManage && <th>Actions</th>}</tr></thead><tbody>
+        {customers.map((customer, index) => <tr key={customer.id}><td><div className="user-cell"><div className="avatar-sm" style={{ backgroundColor: ['#673ab7', '#2196f3', '#00c853', '#ffc107'][index % 4] }}>{customer.name?.charAt(0)}</div><span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{customer.name}</span></div></td><td>{customer.email || '—'}</td><td>{customer.phone || '—'}</td><td>{customer.company_name || '—'}</td><td><span className={statusBadge(customer.status)}>{customer.status}</span></td>{canManage && <td><div className="invoice-actions"><button className="btn btn-secondary btn-icon btn-sm" title="Edit customer" aria-label={`Edit ${customer.name}`} onClick={() => startEdit(customer)}><Pencil size={14} /></button><button className="btn btn-danger btn-icon btn-sm" title="Delete customer" aria-label={`Delete ${customer.name}`} onClick={() => deleteCustomer(customer.id)}><Trash2 size={14} /></button></div></td>}</tr>)}
+        {!busy && !loading && customers.length === 0 && <tr><td colSpan={canManage ? 6 : 5}>{search ? 'No customers match this search.' : 'No customers yet. Add your first customer to get started.'}</td></tr>}{(busy || loading) && <tr><td colSpan={canManage ? 6 : 5}>Loading customers…</td></tr>}
+      </tbody></table></div>
+      <div className="pagination"><span className="pagination-info">{total ? `Showing ${(page - 1) * PER_PAGE + 1}–${Math.min(page * PER_PAGE, total)} of ${total}` : 'No records'}</span><div className="pagination-btns">{Array.from({ length: pages }, (_, index) => index + 1).map((value) => <button key={value} className={`page-btn ${value === page ? 'active' : ''}`} onClick={() => setPage(value)}>{value}</button>)}</div></div>
     </div>
-  );
-};
-
-export default Customers;
+    {showModal && <div className="modal-backdrop" onClick={() => setShowModal(false)}><form className="modal" onSubmit={saveCustomer} onClick={(event) => event.stopPropagation()}><div className="modal-header"><span className="modal-title">{editingId ? 'Edit customer' : 'Add Customer'}</span><button type="button" className="btn btn-secondary btn-icon" onClick={() => setShowModal(false)}><X size={18} /></button></div><div className="modal-body"><div className="form-grid-2">
+      <div className="form-group"><label className="form-label">Full name</label><input required maxLength="160" className="form-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+      <div className="form-group"><label className="form-label">Email</label><input type="email" className="form-input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+      <div className="form-group"><label className="form-label">Phone</label><input className="form-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+      <div className="form-group"><label className="form-label">Company</label><input className="form-input" value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} /></div>
+      <div className="form-group"><label className="form-label">Status</label><select className="form-input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="lead">Lead</option><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+    </div></div><div className="modal-footer"><button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button><button type="submit" className="btn btn-primary" disabled={busy}>Save customer</button></div></form></div>}
+  </div>;
+}

@@ -11,6 +11,14 @@ node_modules
 dist
 dist-ssr
 *.local
+work/npm-cache/
+work/npm-logs/
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
 
 # Editor directories and files
 .vscode/*

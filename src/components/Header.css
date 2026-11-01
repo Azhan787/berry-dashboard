@@ -16,6 +16,8 @@
   min-width: 0;
 }
 
+.workspace-switcher{max-width:190px;height:38px;padding:0 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-primary);font-size:13px}
+
 .icon-btn {
   width: 40px;
   height: 40px;

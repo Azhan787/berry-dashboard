@@ -1,155 +1,28 @@
-import React, { useState } from 'react';
-import { Search, Plus, X, Pencil, Trash2, Eye, BookOpen, Users, TrendingUp, Star } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { FileText, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { apiRequest } from '../lib/auth';
+import { useAuth } from '../contexts/AuthContextValue';
 import './pages.css';
 
-const blogStats = [
-  { label: 'Total Posts', value: '128', icon: BookOpen, bg: 'rgba(103,58,183,0.15)', color: '#673ab7' },
-  { label: 'Total Authors', value: '24', icon: Users, bg: 'rgba(33,150,243,0.15)', color: '#2196f3' },
-  { label: 'Total Views', value: '1.4M', icon: Eye, bg: 'rgba(0,200,83,0.15)', color: '#00c853' },
-  { label: 'Featured Posts', value: '18', icon: Star, bg: 'rgba(255,193,7,0.15)', color: '#ffc107' },
-];
+const blank = () => ({ title: '', category_id: '', excerpt: '', body: '', status: 'draft' });
 
-const initialPosts = [
-  { id: 1, title: 'Getting Started with React', author: 'Alice M.', date: '2026-09-01', status: 'Published', views: 3420 },
-  { id: 2, title: 'Advanced CSS Techniques', author: 'Bob L.', date: '2026-09-02', status: 'Draft', views: 0 },
-  { id: 3, title: 'Node.js Best Practices', author: 'Carol W.', date: '2026-09-03', status: 'Published', views: 2100 },
-  { id: 4, title: 'Database Design Patterns', author: 'David K.', date: '2026-09-04', status: 'Review', views: 0 },
-  { id: 5, title: 'UI/UX for Developers', author: 'Eve T.', date: '2026-09-05', status: 'Published', views: 5800 },
-];
-
-const Blog = () => {
-  const [posts, setPosts] = useState(initialPosts);
-  const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ title: '', author: '', date: '', status: 'Draft' });
-
-  const filtered = posts.filter(p =>
-    p.title.toLowerCase().includes(search.toLowerCase()) ||
-    p.author.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const addPost = () => {
-    setPosts([{ id: Date.now(), ...form, views: 0 }, ...posts]);
-    setShowModal(false);
-    setForm({ title: '', author: '', date: '', status: 'Draft' });
-  };
-
-  const deletePost = (id) => setPosts(posts.filter(p => p.id !== id));
-
-  const statusBadge = (s) => {
-    const map = { Published: 'badge-success', Draft: 'badge-warning', Review: 'badge-info' };
-    return `badge ${map[s] || 'badge-info'}`;
-  };
-
-  return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Blog</h1>
-          <p className="page-subtitle">Manage your blog posts and content</p>
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-          <Plus size={16} /> Add Post
-        </button>
-      </div>
-
-      <div className="stats-row">
-        {blogStats.map(s => (
-          <div className="mini-stat-card" key={s.label}>
-            <div className="mini-stat-icon" style={{ backgroundColor: s.bg }}>
-              <s.icon size={22} color={s.color} />
-            </div>
-            <div>
-              <div className="mini-stat-value">{s.value}</div>
-              <div className="mini-stat-label">{s.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="table-card">
-        <div className="table-card-header">
-          <div className="table-card-title">Blog Posts</div>
-          <div className="table-actions">
-            <div className="search-input-wrap">
-              <Search size={16} color="#64748b" />
-              <input placeholder="Search posts..." value={search} onChange={e => setSearch(e.target.value)} />
-            </div>
-          </div>
-        </div>
-
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Author</th>
-                <th>Date</th>
-                <th>Status</th>
-                <th>Views</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(post => (
-                <tr key={post.id}>
-                  <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{post.title}</td>
-                  <td>{post.author}</td>
-                  <td>{post.date}</td>
-                  <td><span className={statusBadge(post.status)}>{post.status}</span></td>
-                  <td>{post.views.toLocaleString()}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button className="btn btn-secondary btn-icon btn-sm" title="View"><Eye size={14} /></button>
-                      <button className="btn btn-secondary btn-icon btn-sm" title="Edit"><Pencil size={14} /></button>
-                      <button className="btn btn-danger btn-icon btn-sm" title="Delete" onClick={() => deletePost(post.id)}><Trash2 size={14} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {showModal && (
-        <div className="modal-backdrop" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Add Blog Post</span>
-              <button className="btn btn-secondary btn-icon" onClick={() => setShowModal(false)}><X size={18} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Title</label>
-                <input className="form-input" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Post title" />
-              </div>
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Author</label>
-                  <input className="form-input" value={form.author} onChange={e => setForm({ ...form, author: e.target.value })} placeholder="Author name" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Date</label>
-                  <input type="date" className="form-input" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Status</label>
-                <select className="form-input" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
-                  {['Draft', 'Review', 'Published'].map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={addPost}>Add Post</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default Blog;
+export default function Blog() {
+  const { activeOrganizationId, organizations } = useAuth();
+  const role = organizations.find((item) => item.id === activeOrganizationId)?.role;
+  const canManage = ['owner','admin','manager'].includes(role);
+  const [state, setState] = useState({ organizationId: null, posts: [], categories: [] });
+  const [filter, setFilter] = useState('All'); const [search, setSearch] = useState(''); const [modal, setModal] = useState(false); const [editing, setEditing] = useState(null); const [form, setForm] = useState(blank());
+  const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
+  const posts = state.organizationId === activeOrganizationId ? state.posts : []; const categories = state.organizationId === activeOrganizationId ? state.categories : [];
+  const load = async () => { const query = new URLSearchParams(); if (filter !== 'All') query.set('status', filter); if (search) query.set('search', search); const [result, categories] = await Promise.all([apiRequest(`/blog?${query}`), apiRequest('/blog/categories')]); setState({ organizationId: activeOrganizationId, posts: result.items || [], categories: categories || [] }); };
+  useEffect(() => { let active = true; const query = new URLSearchParams(); if (filter !== 'All') query.set('status', filter); if (search) query.set('search', search); Promise.all([apiRequest(`/blog?${query}`), apiRequest('/blog/categories')]).then(([result, categories]) => { if (active) { setState({ organizationId: activeOrganizationId, posts: result.items || [], categories: categories || [] }); setError(''); } }).catch((err) => { if (active) setError(err.message); }); return () => { active = false; }; }, [activeOrganizationId, filter, search]);
+  const startEdit = (post) => { setEditing(post.id); setForm({ title: post.title, category_id: post.category_id || '', excerpt: post.excerpt || '', body: post.body || '', status: post.status }); setModal(true); };
+  const createCategory = async () => { const name = window.prompt('Category name'); if (!name?.trim()) return; try { const category = await apiRequest('/blog/categories', { method: 'POST', body: { name: name.trim() } }); setState((current) => ({ ...current, categories: [...current.categories, category] })); setForm((current) => ({ ...current, category_id: category.id })); } catch (err) { setError(err.message); } };
+  const save = async (event) => { event.preventDefault(); setBusy(true); setError(''); try { await apiRequest(editing ? `/blog/${editing}` : '/blog', { method: editing ? 'PATCH' : 'POST', body: { ...form, category_id: form.category_id || null } }); setModal(false); setNotice('Post saved.'); await load(); } catch (err) { setError(err.message); } finally { setBusy(false); } };
+  const remove = async (post) => { if (!window.confirm(`Delete “${post.title}”?`)) return; setBusy(true); try { await apiRequest(`/blog/${post.id}`, { method: 'DELETE' }); await load(); } catch (err) { setError(err.message); } finally { setBusy(false); } };
+  const publish = async (post) => { setBusy(true); try { const status = post.status === 'published' ? 'draft' : 'published'; await apiRequest(`/blog/${post.id}`, { method: 'PATCH', body: { status } }); setNotice(status === 'published' ? 'Post published.' : 'Post returned to draft.'); await load(); } catch (err) { setError(err.message); } finally { setBusy(false); } };
+  return <section className="business-dashboard"><div className="page-header"><div><h1 className="page-title">Blog</h1><p className="page-subtitle">Create and manage workspace posts and announcements.</p></div>{canManage && <button className="btn btn-primary" onClick={() => { setEditing(null); setForm(blank()); setModal(true); }}><Plus size={16} /> New post</button>}</div>{notice && <div className="invoice-notice">{notice}</div>}{error && <div role="alert" className="dashboard-state dashboard-error">{error}</div>}
+    <div className="table-card"><div className="table-card-header"><div className="table-card-title">Posts ({posts.length})</div><div className="table-actions"><div className="search-input-wrap"><input aria-label="Search posts" placeholder="Search titles" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="select-input" value={filter} onChange={(event) => setFilter(event.target.value)}><option>All</option>{['draft','published','archived'].map((value) => <option key={value}>{value}</option>)}</select></div></div><div className="table-responsive"><table className="data-table"><thead><tr><th>Post</th><th>Category</th><th>Status</th><th>Updated</th>{canManage && <th>Actions</th>}</tr></thead><tbody>{posts.map((post) => <tr key={post.id}><td><div className="user-cell"><span className="project-icon"><FileText size={16} /></span><div><strong>{post.title}</strong><small className="team-email">{post.excerpt || post.slug}</small></div></div></td><td>{categories.find((item) => item.id === post.category_id)?.name || '—'}</td><td><span className="badge badge-info">{post.status}</span></td><td>{new Date(post.updated_at).toLocaleDateString()}</td>{canManage && <td><div className="invoice-actions"><button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => publish(post)}>{post.status === 'published' ? 'Unpublish' : 'Publish'}</button><button className="btn btn-secondary btn-icon btn-sm" aria-label={`Edit ${post.title}`} onClick={() => startEdit(post)}><Pencil size={14} /></button><button className="btn btn-danger btn-icon btn-sm" aria-label={`Delete ${post.title}`} onClick={() => remove(post)}><Trash2 size={14} /></button></div></td>}</tr>)}{!posts.length && <tr><td colSpan={canManage ? 5 : 4}>{search ? 'No posts match this search.' : 'No posts yet.'}</td></tr>}</tbody></table></div></div>
+    {modal && <div className="modal-backdrop" onClick={() => !busy && setModal(false)}><form className="modal invoice-modal" onSubmit={save} onClick={(event) => event.stopPropagation()}><div className="modal-header"><span className="modal-title">{editing ? 'Edit post' : 'New post'}</span><button type="button" className="btn btn-secondary btn-icon" onClick={() => setModal(false)}><X size={18} /></button></div><div className="modal-body"><div className="form-grid-2"><div className="form-group form-span-2"><label className="form-label">Title</label><input required maxLength="180" className="form-input" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></div><div className="form-group"><label className="form-label">Category</label><div className="category-select-row"><select className="form-input" value={form.category_id} onChange={(event) => setForm({ ...form, category_id: event.target.value })}><option value="">No category</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><button type="button" className="btn btn-secondary" onClick={createCategory}>Add</button></div></div><div className="form-group"><label className="form-label">Status</label><select className="form-input" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></div><div className="form-group form-span-2"><label className="form-label">Excerpt</label><input maxLength="500" className="form-input" value={form.excerpt} onChange={(event) => setForm({ ...form, excerpt: event.target.value })} /></div><div className="form-group form-span-2"><label className="form-label">Body</label><textarea required maxLength="100000" rows="12" className="form-input" value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} /></div></div></div><div className="modal-footer"><button type="button" className="btn btn-secondary" onClick={() => setModal(false)}>Cancel</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save post'}</button></div></form></div>}
+  </section>;
+}

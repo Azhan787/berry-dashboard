@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, FileText, Users,
   BarChart2, PieChart, Activity, ShoppingBag, Box,
-  Headset, Rss
+  Headset, Rss, BriefcaseBusiness, ListTodo, Settings
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -14,7 +14,7 @@ const navItems = [
       { label: 'Default', path: '/', icon: LayoutDashboard, end: true },
       { label: 'Analytics', path: '/analytics', icon: TrendingUp },
       { label: 'Invoice', path: '/invoice', icon: FileText },
-      { label: 'CRM', path: '/crm', icon: Headset },
+      { label: 'CRM Pipeline', path: '/crm', icon: Headset },
       { label: 'Blog', path: '/blog', icon: Rss },
     ],
   },
@@ -31,6 +31,9 @@ const navItems = [
     items: [
       { label: 'Users', path: '/users', icon: Users },
       { label: 'Customer', path: '/customers', icon: ShoppingBag },
+      { label: 'Projects', path: '/projects', icon: BriefcaseBusiness },
+      { label: 'Tasks', path: '/tasks', icon: ListTodo },
+      { label: 'Organization', path: '/organization-settings', icon: Settings },
     ],
   },
 ];

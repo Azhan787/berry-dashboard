@@ -5,12 +5,14 @@ import ConnectionDropdown from './Dropdowns/ConnectionDropdown';
 import LanguageDropdown from './Dropdowns/LanguageDropdown';
 import NotificationDropdown from './Dropdowns/NotificationDropdown';
 import ProfileDropdown from './Dropdowns/ProfileDropdown';
-import { SettingsContext } from '../contexts/SettingsContext';
+import { SettingsContext } from '../contexts/SettingsContextValue';
+import { useAuth } from '../contexts/AuthContextValue';
 import './Header.css';
 
 const Header = ({ toggleSidebar }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { toggleSettings } = useContext(SettingsContext);
+  const { organizations, activeOrganizationId, chooseOrganization } = useAuth();
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -45,6 +47,9 @@ const Header = ({ toggleSidebar }) => {
         </button>
         
         <SearchBar />
+        {organizations.length > 1 && <select className="workspace-switcher" aria-label="Select workspace" value={activeOrganizationId} onChange={(event) => chooseOrganization(event.target.value)}>
+          {organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}
+        </select>}
       </div>
       
       <div className="header-right">

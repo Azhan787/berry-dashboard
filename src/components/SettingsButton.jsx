@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { Settings } from 'lucide-react';
-import { SettingsContext } from '../contexts/SettingsContext';
+import { SettingsContext } from '../contexts/SettingsContextValue';
 import './SettingsButton.css';
 
 const SettingsButton = () => {

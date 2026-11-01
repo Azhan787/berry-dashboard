@@ -1,0 +1,9 @@
+# Architecture
+
+The existing React 19/Vite application retains its router, layout, component styling, and chart dependencies. It uses a lightweight Auth context to call Supabase Auth, store the returned session, refresh access tokens when the API rejects an expired token, and keep the chosen organization ID for workspace selection.
+
+The Express API runs as a separate Node process under `server/`. `/api/v1` routes verify Supabase JWTs with `auth.getUser(token)`, create a Supabase client scoped to that user's bearer token, check active organization membership, validate request bodies, then use PostgreSQL RLS for final authorization. The API never trusts the organization header by itself. Tenant tables are filtered by both the API query and database policies.
+
+Organization creation uses a narrowly scoped `SECURITY DEFINER` RPC because a new owner cannot be a member before the organization exists. The function checks `auth.uid()`, inserts the organization and owner membership in one transaction, and has a fixed empty search path. All normal data queries use the request-scoped client; no secret/service-role key is needed for implemented user flows.
+
+The current source includes signup/sign-in/password recovery, organization creation/switching/settings, profile editing, customer and deal management, team invitations, invoice draft/issue/payment/PDF/email flows, project/task screens, blog management, notifications, audit capture, analytics, private files, and CSV exports. Analytics queries a SQL summary function with a validated date range and presents money by one selected currency at a time. File uploads use a private organization-folder bucket and short-lived signed URLs. Payment recording is manual; there is no payment processor. Client portal, subscription entitlements, task comments, project membership management, and PDF report exports remain unimplemented.

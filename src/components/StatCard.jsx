@@ -13,7 +13,7 @@ const dummyChartData = [
   { value: 50 },
 ];
 
-const StatCard = ({ variant, title, value, icon: Icon, trend }) => {
+const StatCard = ({ variant, title, value }) => {
   if (variant === 'purple') {
     return (
       <div className="stat-card purple-card">

@@ -1,194 +1,64 @@
-import React, { useState } from 'react';
-import { Search, Plus, Pencil, Trash2, X, Users as UsersIcon, UserCheck, UserX, Shield } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Search, UserPlus, Trash2, Mail, ShieldCheck, X } from 'lucide-react';
+import { apiRequest } from '../lib/auth';
+import { useAuth } from '../contexts/AuthContextValue';
 import './pages.css';
 
-const userStats = [
-  { label: 'Total Users', value: '12,489', icon: UsersIcon, bg: 'rgba(103,58,183,0.15)', color: '#673ab7' },
-  { label: 'Active Users', value: '9,821', icon: UserCheck, bg: 'rgba(0,200,83,0.15)', color: '#00c853' },
-  { label: 'Inactive Users', value: '2,668', icon: UserX, bg: 'rgba(244,67,54,0.15)', color: '#f44336' },
-  { label: 'Admins', value: '34', icon: Shield, bg: 'rgba(255,193,7,0.15)', color: '#ffc107' },
-];
+export default function Users() {
+  const { activeOrganizationId, organizations } = useAuth();
+  const currentRole = organizations.find((item) => item.id === activeOrganizationId)?.role;
+  const canManage = ['owner', 'admin'].includes(currentRole);
+  const [teamState, setTeamState] = useState({ organizationId: null, members: [], invitations: [] });
+  const [search, setSearch] = useState(''); const [showInvite, setShowInvite] = useState(false); const [invite, setInvite] = useState({ email: '', role: 'member' });
+  const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
+  const loading = teamState.organizationId !== activeOrganizationId;
+  const members = loading ? [] : teamState.members; const invitations = loading ? [] : teamState.invitations;
+  const visibleMembers = members.filter((member) => `${member.profile?.full_name || ''} ${member.profile?.email || ''}`.toLowerCase().includes(search.toLowerCase()));
 
-const avatarColors = ['#673ab7', '#2196f3', '#00c853', '#ffc107', '#f44336', '#e91e63', '#00bcd4'];
+  const load = async () => {
+    const [memberRows, invitationRows] = await Promise.all([apiRequest(`/organizations/${activeOrganizationId}/members`), apiRequest(`/organizations/${activeOrganizationId}/invitations`)]);
+    setTeamState({ organizationId: activeOrganizationId, members: memberRows || [], invitations: invitationRows || [] });
+  };
+  useEffect(() => {
+    let active = true;
+    Promise.all([apiRequest(`/organizations/${activeOrganizationId}/members`), apiRequest(`/organizations/${activeOrganizationId}/invitations`)]).then(([memberRows, invitationRows]) => {
+      if (active) { setTeamState({ organizationId: activeOrganizationId, members: memberRows || [], invitations: invitationRows || [] }); setError(''); }
+    }).catch((err) => { if (active) { setTeamState({ organizationId: activeOrganizationId, members: [], invitations: [] }); setError(err.message); } });
+    return () => { active = false; };
+  }, [activeOrganizationId]);
 
-const initialUsers = [
-  { id: 1, name: 'Alice Martin', email: 'alice@example.com', role: 'Admin', status: 'Active', joined: '2024-01-15' },
-  { id: 2, name: 'Bob Lee', email: 'bob@example.com', role: 'User', status: 'Active', joined: '2024-03-22' },
-  { id: 3, name: 'Carol White', email: 'carol@example.com', role: 'Editor', status: 'Inactive', joined: '2024-05-10' },
-  { id: 4, name: 'David Kim', email: 'david@example.com', role: 'User', status: 'Active', joined: '2024-07-01' },
-  { id: 5, name: 'Eve Turner', email: 'eve@example.com', role: 'Moderator', status: 'Active', joined: '2025-01-18' },
-  { id: 6, name: 'Frank Stone', email: 'frank@example.com', role: 'User', status: 'Inactive', joined: '2025-03-05' },
-  { id: 7, name: 'Grace Hall', email: 'grace@example.com', role: 'Admin', status: 'Active', joined: '2025-06-20' },
-];
-
-const roleBadge = (role) => {
-  const map = { Admin: 'badge-error', Editor: 'badge-warning', Moderator: 'badge-purple', User: 'badge-info' };
-  return `badge ${map[role] || 'badge-info'}`;
-};
-
-const PER_PAGE = 5;
-
-const Users = () => {
-  const [users, setUsers] = useState(initialUsers);
-  const [search, setSearch] = useState('');
-  const [filterRole, setFilterRole] = useState('All');
-  const [showModal, setShowModal] = useState(false);
-  const [page, setPage] = useState(1);
-  const [form, setForm] = useState({ name: '', email: '', role: 'User', status: 'Active', joined: '' });
-
-  const filtered = users.filter(u =>
-    (filterRole === 'All' || u.role === filterRole) &&
-    (u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const totalPages = Math.ceil(filtered.length / PER_PAGE);
-
-  const addUser = () => {
-    setUsers([{ id: Date.now(), ...form }, ...users]);
-    setShowModal(false);
-    setForm({ name: '', email: '', role: 'User', status: 'Active', joined: '' });
+  const updateMember = async (member, values) => {
+    setBusy(true); setError('');
+    try { await apiRequest(`/organizations/${activeOrganizationId}/members/${member.user_id}`, { method: 'PATCH', body: { role: values.role ?? member.role, status: values.status ?? member.status } }); setNotice('Team member updated.'); await load(); }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+  const removeMember = async (member) => {
+    if (!window.confirm(`Remove ${member.profile?.email || 'this member'} from the workspace?`)) return;
+    setBusy(true); setError('');
+    try { await apiRequest(`/organizations/${activeOrganizationId}/members/${member.user_id}`, { method: 'DELETE' }); setNotice('Member removed from this workspace.'); await load(); }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+  const createInvite = async (event) => {
+    event.preventDefault(); setBusy(true); setError(''); setNotice('');
+    try { await apiRequest(`/organizations/${activeOrganizationId}/invitations`, { method: 'POST', body: invite }); setInvite({ email: '', role: 'member' }); setShowInvite(false); setNotice('Invitation email sent.'); await load(); }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+  const revokeInvite = async (row) => {
+    setBusy(true); setError('');
+    try { await apiRequest(`/organizations/${activeOrganizationId}/invitations/${row.id}`, { method: 'DELETE' }); setNotice(`Invitation to ${row.email} revoked.`); await load(); }
+    catch (err) { setError(err.message); } finally { setBusy(false); }
   };
 
-  const deleteUser = (id) => setUsers(users.filter(u => u.id !== id));
+  return <div>
+    <div className="page-header"><div><h1 className="page-title">Team</h1><p className="page-subtitle">Manage members and invitations for this organization.</p></div>{canManage && <button className="btn btn-primary" onClick={() => setShowInvite(true)}><UserPlus size={16} /> Invite member</button>}</div>
+    {error && <div role="alert" className="dashboard-state dashboard-error">{error}</div>}{notice && <div role="status" className="invoice-notice">{notice}</div>}
+    {!canManage && !loading && <div className="business-panel">Team administration is restricted to organization owners and admins.</div>}
+    <div className="table-card"><div className="table-card-header"><div className="table-card-title">Members ({members.length})</div><div className="table-actions"><div className="search-input-wrap"><Search size={16} color="#64748b" /><input placeholder="Search members..." value={search} onChange={(event) => setSearch(event.target.value)} /></div></div></div><div className="table-responsive"><table className="data-table"><thead><tr><th>Member</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead><tbody>
+      {visibleMembers.map((member) => <tr key={member.user_id}><td><div className="user-cell"><div className="avatar-sm">{(member.profile?.full_name || member.profile?.email || '?').charAt(0).toUpperCase()}</div><div><strong>{member.profile?.full_name || '—'}</strong><div className="team-email">{member.profile?.email || member.user_id}</div></div></div></td><td>{canManage && member.role !== 'owner' ? <select aria-label={`Role for ${member.profile?.email || member.user_id}`} className="select-input" value={member.role} disabled={busy || (currentRole === 'admin' && member.role === 'admin')} onChange={(event) => updateMember(member, { role: event.target.value })}>{(currentRole === 'owner' ? ['admin', 'manager', 'member', 'viewer'] : ['manager', 'member', 'viewer']).map((role) => <option key={role}>{role}</option>)}</select> : member.role}</td><td><span className={`badge ${member.status === 'active' ? 'badge-success' : 'badge-warning'}`}>{member.status}</span></td><td>{member.joined_at ? new Date(member.joined_at).toLocaleDateString() : '—'}</td><td>{member.role !== 'owner' && canManage && <div className="team-actions"><button className="btn btn-secondary btn-sm" disabled={busy || (currentRole === 'admin' && member.role === 'admin')} onClick={() => updateMember(member, { status: member.status === 'active' ? 'suspended' : 'active' })}>{member.status === 'active' ? 'Suspend' : 'Reactivate'}</button><button className="btn btn-danger btn-icon btn-sm" title="Remove member" onClick={() => removeMember(member)}><Trash2 size={14} /></button></div>}</td></tr>)}
+      {loading && <tr><td colSpan="5">Loading team…</td></tr>}{!loading && canManage && visibleMembers.length === 0 && <tr><td colSpan="5">{search ? 'No members match this search.' : 'No team members found.'}</td></tr>}
+    </tbody></table></div></div>
+    {canManage && <div className="table-card"><div className="table-card-header"><div className="table-card-title">Invitations ({invitations.filter((row) => !row.accepted_at && !row.revoked_at && new Date(row.expires_at) > new Date()).length})</div></div><div className="table-responsive"><table className="data-table"><thead><tr><th>Email</th><th>Role</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>{invitations.map((row) => { const active = !row.accepted_at && !row.revoked_at && new Date(row.expires_at) > new Date(); const state = row.accepted_at ? 'accepted' : row.revoked_at ? 'revoked' : active ? 'pending' : 'expired'; return <tr key={row.id}><td>{row.email}</td><td>{row.role}</td><td>{new Date(row.expires_at).toLocaleDateString()}</td><td>{state}</td><td>{active && <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => revokeInvite(row)}><X size={14} /> Revoke</button>}</td></tr>; })}{!loading && invitations.length === 0 && <tr><td colSpan="5">No invitations.</td></tr>}</tbody></table></div></div>}
 
-  return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Users</h1>
-          <p className="page-subtitle">Manage user accounts and permissions</p>
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-          <Plus size={16} /> Add User
-        </button>
-      </div>
-
-      <div className="stats-row">
-        {userStats.map(s => (
-          <div className="mini-stat-card" key={s.label}>
-            <div className="mini-stat-icon" style={{ backgroundColor: s.bg }}>
-              <s.icon size={22} color={s.color} />
-            </div>
-            <div>
-              <div className="mini-stat-value">{s.value}</div>
-              <div className="mini-stat-label">{s.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="table-card">
-        <div className="table-card-header">
-          <div className="table-card-title">All Users ({filtered.length})</div>
-          <div className="table-actions">
-            <div className="search-input-wrap">
-              <Search size={16} color="#64748b" />
-              <input placeholder="Search users..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
-            </div>
-            <select className="select-input" value={filterRole} onChange={e => { setFilterRole(e.target.value); setPage(1); }}>
-              {['All', 'Admin', 'Editor', 'Moderator', 'User'].map(r => <option key={r}>{r}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Joined</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginated.map((u, i) => (
-                <tr key={u.id}>
-                  <td>
-                    <div className="user-cell">
-                      <div className="avatar-sm" style={{ backgroundColor: avatarColors[i % avatarColors.length] }}>
-                        {u.name.charAt(0)}
-                      </div>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{u.name}</span>
-                    </div>
-                  </td>
-                  <td>{u.email}</td>
-                  <td><span className={roleBadge(u.role)}>{u.role}</span></td>
-                  <td>
-                    <span className={`badge ${u.status === 'Active' ? 'badge-success' : 'badge-error'}`}>{u.status}</span>
-                  </td>
-                  <td>{u.joined}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button className="btn btn-secondary btn-icon btn-sm" title="Edit"><Pencil size={14} /></button>
-                      <button className="btn btn-danger btn-icon btn-sm" title="Delete" onClick={() => deleteUser(u.id)}><Trash2 size={14} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="pagination">
-          <span className="pagination-info">
-            Showing {Math.min((page - 1) * PER_PAGE + 1, filtered.length)}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length}
-          </span>
-          <div className="pagination-btns">
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-              <button key={p} className={`page-btn ${p === page ? 'active' : ''}`} onClick={() => setPage(p)}>{p}</button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {showModal && (
-        <div className="modal-backdrop" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Add New User</span>
-              <button className="btn btn-secondary btn-icon" onClick={() => setShowModal(false)}><X size={18} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Full Name</label>
-                <input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Full name" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Email</label>
-                <input type="email" className="form-input" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" />
-              </div>
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Role</label>
-                  <select className="form-input" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                    {['User', 'Admin', 'Editor', 'Moderator'].map(r => <option key={r}>{r}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Status</label>
-                  <select className="form-input" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
-                    {['Active', 'Inactive'].map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Join Date</label>
-                  <input type="date" className="form-input" value={form.joined} onChange={e => setForm({ ...form, joined: e.target.value })} />
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={addUser}>Add User</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default Users;
+    {showInvite && <div className="modal-backdrop" onClick={() => !busy && setShowInvite(false)}><form className="modal" onSubmit={createInvite} onClick={(event) => event.stopPropagation()}><div className="modal-header"><span className="modal-title">Invite a teammate</span><button type="button" className="btn btn-secondary btn-icon" onClick={() => setShowInvite(false)}><X size={18} /></button></div><div className="modal-body"><div className="form-group"><label className="form-label">Work email</label><input required type="email" maxLength="254" className="form-input" value={invite.email} onChange={(event) => setInvite({ ...invite, email: event.target.value })} /></div><div className="form-group"><label className="form-label">Role</label><select className="form-input" value={invite.role} onChange={(event) => setInvite({ ...invite, role: event.target.value })}>{(currentRole === 'owner' ? ['admin', 'manager', 'member', 'viewer'] : ['manager', 'member', 'viewer']).map((role) => <option key={role}>{role}</option>)}</select></div><p className="team-invite-help"><Mail size={14} /> Invitation email is sent through the configured server email provider and expires in seven days.</p></div><div className="modal-footer"><button type="button" className="btn btn-secondary" onClick={() => setShowInvite(false)}>Cancel</button><button type="submit" className="btn btn-primary" disabled={busy}><ShieldCheck size={15} /> Send invitation</button></div></form></div>}
+  </div>;
+}

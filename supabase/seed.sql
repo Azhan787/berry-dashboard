@@ -1,0 +1,3 @@
+-- Intentionally empty: there are no fictional organizations, customers, invoices,
+-- revenue records, or team accounts to seed into any Supabase environment.
+-- Create test records through the application only in a dedicated development project.

@@ -1,31 +1,29 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext } from 'react';
 import { Outlet } from 'react-router-dom';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import SettingsButton from '../components/SettingsButton';
 import SettingsPanel from '../components/SettingsPanel';
-import { SettingsContext } from '../contexts/SettingsContext';
+import { SettingsContext } from '../contexts/SettingsContextValue';
 
 const DashboardLayout = () => {
-  const { settings } = useContext(SettingsContext);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(
-    () => window.innerWidth > 1024 && settings.sidebarState === 'expanded',
-  );
-
-  // Sync sidebar state from settings panel
-  useEffect(() => {
-    if (window.innerWidth > 1024) {
-      setIsSidebarOpen(settings.sidebarState === 'expanded');
-    }
-  }, [settings.sidebarState]);
+  const { settings, updateSetting } = useContext(SettingsContext);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const isDesktop = window.innerWidth > 1024;
+  const isSidebarOpen = isDesktop ? settings.sidebarState === 'expanded' : mobileSidebarOpen;
 
   const toggleSidebar = () => {
-    setIsSidebarOpen((prev) => !prev);
+    if (isDesktop) updateSetting('sidebarState', isSidebarOpen ? 'collapsed' : 'expanded');
+    else setMobileSidebarOpen((prev) => !prev);
+  };
+  const closeSidebar = () => {
+    if (isDesktop) updateSetting('sidebarState', 'collapsed');
+    else setMobileSidebarOpen(false);
   };
 
   return (
     <div className={`app-container ${settings.layout}`}>
-      <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+      <Sidebar isOpen={isSidebarOpen} setIsOpen={closeSidebar} />
       <main className={`main-content ${!isSidebarOpen ? 'collapsed' : ''}`}>
         <Header toggleSidebar={toggleSidebar} />
         <div className="page-content">

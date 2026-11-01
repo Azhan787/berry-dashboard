@@ -1,0 +1,9 @@
+# Database schema
+
+Migrations: `supabase/migrations/202610310001_core_multitenant.sql` and `supabase/migrations/202610310002_project_collaboration.sql`.
+
+The migration creates `profiles`, `organizations`, `organization_memberships`, `organization_invitations`, `customers`, `deals`, `blog_categories`, `blog_posts`, `invoices`, `invoice_items`, `invoice_payments`, `invoice_sequences`, `projects`, `project_members`, `tasks`, `notifications`, `audit_logs`, `organization_settings`, and `stored_files`. It defines role/status enums, constraints, indexes, organization scoped composite foreign keys, timestamp defaults, profile/activity triggers, tenant access helper functions, and secure RPCs for organization creation/settings, invitations, invoice lifecycle, and task updates.
+
+All current tenant-owned tables have RLS enabled. Read/write policies use active membership and role checks. Audit logs have no client insert/update/delete policy and a mutation trigger rejects updates/deletes. Invoice money columns use PostgreSQL `numeric`; invoice balance is generated. Invoice RPCs calculate totals, snapshot issued details, enforce payment idempotency, and restrict direct financial table writes to reads. Task updates use a role-checked function so members cannot change assignment or task metadata through direct table access.
+
+The core migration creates a private `berry-private` Storage bucket with organization-folder policies, and the API stores uploaded file metadata in `stored_files`. The follow-up migration creates project comments with project-scoped read/insert policies. Subscription plans, organization subscriptions, usage records, payment transactions, and client portal policies are not included yet. Migrations and bucket policies still require application and verification in a development project.

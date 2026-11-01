@@ -1,88 +1,23 @@
-import React, { useState, useRef } from 'react';
-import { Bell, ShoppingCart, CreditCard, UserPlus, FileBarChart, Check } from 'lucide-react';
+import React, { useCallback, useRef, useState } from 'react';
+import { Bell, CheckCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { apiRequest } from '../../lib/auth';
+import { useAuth } from '../../contexts/AuthContextValue';
 import { useClickOutside } from '../../hooks/useClickOutside';
 import './Dropdown.css';
 
-const NotificationDropdown = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(4);
-  const dropdownRef = useRef(null);
-
+export default function NotificationDropdown() {
+  const { activeOrganizationId } = useAuth();
+  const [isOpen, setIsOpen] = useState(false); const [state, setState] = useState({ organizationId: null, items: [], unreadCount: 0 }); const [error, setError] = useState('');
+  const dropdownRef = useRef(null); const navigate = useNavigate();
   useClickOutside(dropdownRef, () => setIsOpen(false));
-
-  const notifications = [
-    { id: 1, title: 'New order received', time: '2 mins ago', icon: ShoppingCart, color: '#42a5f5', bg: 'rgba(66, 165, 245, 0.1)' },
-    { id: 2, title: 'Payment completed', time: '1 hour ago', icon: CreditCard, color: '#00c853', bg: 'rgba(0, 200, 83, 0.1)' },
-    { id: 3, title: 'New customer registered', time: '3 hours ago', icon: UserPlus, color: '#673ab7', bg: 'rgba(103, 58, 183, 0.1)' },
-    { id: 4, title: 'Monthly report generated', time: '1 day ago', icon: FileBarChart, color: '#ffc107', bg: 'rgba(255, 193, 7, 0.1)' },
-  ];
-
-  const markAllAsRead = () => {
-    setUnreadCount(0);
-  };
-
-  return (
-    <div className="dropdown-wrapper" ref={dropdownRef} style={{ position: 'relative' }}>
-      <button 
-        className="icon-btn" 
-        onClick={() => setIsOpen(!isOpen)}
-        aria-label="Notifications"
-        aria-expanded={isOpen}
-      >
-        <div className="btn-inner">
-          <Bell size={18} />
-          {unreadCount > 0 && <span className="notification-dot"></span>}
-        </div>
-      </button>
-
-      {isOpen && (
-        <div className="dropdown-menu" style={{ top: '100%', right: 0, marginTop: '12px', width: '300px' }}>
-          <div className="dropdown-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Notifications</span>
-            {unreadCount > 0 && (
-              <button 
-                onClick={markAllAsRead}
-                style={{ fontSize: '12px', color: 'var(--color-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}
-              >
-                <Check size={14} /> Mark all read
-              </button>
-            )}
-          </div>
-          <div style={{ maxHeight: '300px', overflowY: 'auto', padding: '8px 0' }}>
-            {notifications.map((notif) => (
-              <div 
-                key={notif.id} 
-                style={{ 
-                  display: 'flex', 
-                  gap: '12px', 
-                  padding: '12px 16px', 
-                  borderBottom: '1px solid var(--border-color)',
-                  cursor: 'pointer'
-                }}
-                className="dropdown-item"
-              >
-                <div style={{ 
-                  width: '36px', height: '36px', borderRadius: '50%', 
-                  backgroundColor: notif.bg, color: notif.color,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0
-                }}>
-                  <notif.icon size={18} />
-                </div>
-                <div>
-                  <h4 style={{ fontSize: '14px', color: 'var(--text-primary)', marginBottom: '4px' }}>{notif.title}</h4>
-                  <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{notif.time}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ padding: '12px', textAlign: 'center', borderTop: '1px solid var(--border-color)' }}>
-            <button style={{ color: 'var(--color-primary-light)', fontSize: '14px', fontWeight: '500' }}>View All</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default NotificationDropdown;
+  const load = useCallback(async () => { try { const result = await apiRequest('/notifications'); setState({ organizationId: activeOrganizationId, items: result.items || [], unreadCount: result.unreadCount || 0 }); setError(''); } catch (err) { setError(err.message); } }, [activeOrganizationId]);
+  const markRead = async (item) => { try { await apiRequest(`/notifications/${item.id}/read`, { method: 'PATCH' }); setState((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, is_read: true } : row), unreadCount: Math.max(0, current.unreadCount - (item.is_read ? 0 : 1)) })); } catch (err) { setError(err.message); } };
+  const markAll = async () => { try { await apiRequest('/notifications/read-all', { method: 'PATCH' }); setState((current) => ({ ...current, items: current.items.map((row) => ({ ...row, is_read: true })), unreadCount: 0 })); } catch (err) { setError(err.message); } };
+  const openItem = async (item) => { if (!item.is_read) await markRead(item); setIsOpen(false); const path = item.action_url?.startsWith('/') && !item.action_url.startsWith('//') ? item.action_url : '/'; navigate(path); };
+  const notifications = state.organizationId === activeOrganizationId ? state.items : [];
+  return <div className="dropdown-wrapper" ref={dropdownRef} style={{ position: 'relative' }}>
+    <button className="icon-btn notification-trigger" onClick={() => { const open = !isOpen; setIsOpen(open); if (open) void load(); }} aria-label={`Notifications${state.unreadCount ? `, ${state.unreadCount} unread` : ''}`} aria-expanded={isOpen}><Bell size={18} />{state.unreadCount > 0 && <span className="notification-count">{state.unreadCount > 99 ? '99+' : state.unreadCount}</span>}</button>
+    {isOpen && <div className="dropdown-menu notification-menu"><div className="dropdown-header"><span>Notifications</span>{state.unreadCount > 0 && <button className="notification-clear" onClick={markAll}><CheckCheck size={14} /> Mark all read</button>}</div>{error && <p className="notification-error">{error}</p>}{notifications.length ? notifications.map((item) => <button key={item.id} className={`notification-item${item.is_read ? '' : ' unread'}`} onClick={() => openItem(item)}><strong>{item.title}</strong><span>{item.message}</span><small>{new Date(item.created_at).toLocaleString()}</small></button>) : <div className="notification-empty">No workspace notifications yet.</div>}</div>}
+  </div>;
+}
