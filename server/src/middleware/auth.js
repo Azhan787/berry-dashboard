@@ -1,5 +1,4 @@
-import { userClient } from '../config/supabase.js';
-import { publicClient } from '../config/supabase.js';
+import { publicClient, userClient } from '../config/supabase.js';
 import { readCookie, setSessionCookies, clearSessionCookies } from '../lib/authCookies.js';
 
 export function createRequireAuth({ getUser = async (token) => userClient(token).auth.getUser(token), refresh = async (token) => publicClient().auth.refreshSession({ refresh_token: token }), makeUserClient = userClient } = {}) {

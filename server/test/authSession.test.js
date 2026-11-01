@@ -24,6 +24,9 @@ test('auth API sets HttpOnly cookies and does not return token values', async (t
   const cookies = response.headers.getSetCookie();
   assert.equal(cookies.length, 2);
   assert.ok(cookies.every((cookie) => /HttpOnly/i.test(cookie) && /SameSite=Lax/i.test(cookie) && /Path=\/api/i.test(cookie)));
+  assert.ok(cookies.every((cookie) => !/Domain=/i.test(cookie)));
+  assert.ok(cookies.some((cookie) => /Max-Age=3600/.test(cookie)));
+  assert.ok(cookies.some((cookie) => /Max-Age=34560000/.test(cookie)));
 });
 
 test('auth API signup preserves confirmation redirect and supports email confirmation pending', async (t) => {
