@@ -53,3 +53,4 @@ npm --prefix server start
 See [PRD.md](PRD.md), [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md), [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md), [docs/SECURITY.md](docs/SECURITY.md), [docs/TESTING.md](docs/TESTING.md), and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The database migration must be applied before using the app. A production rollout also requires review of Supabase Auth settings, CORS origins, HTTPS, secrets, backups, and the unfinished product modules listed above.
 # berry-dashboard-full-stack
 # berry-dashboard-full-stack
+# berry-dashboard-full-stack
