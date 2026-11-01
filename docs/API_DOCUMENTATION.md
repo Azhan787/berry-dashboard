@@ -1,6 +1,8 @@
 # API
 
-Base URL: `http://localhost:5000/api/v1`. Send `Authorization: Bearer <Supabase access token>` for protected routes. Tenant routes also require `X-Organization-Id`; the server verifies the authenticated user has active membership in that organization. Success responses use `{ "success": true, "data": ... }`.
+Base URL: `http://localhost:5000/api/v1`. Browser requests use `credentials: include`; the API sets and reads HttpOnly Supabase session cookies. Do not send or persist bearer tokens in frontend JavaScript. State-changing requests must include an `Origin` matching `CORS_ORIGINS`. Tenant routes also require `X-Organization-Id`; the server verifies the authenticated user has active membership in that organization. Success responses use `{ "success": true, "data": ... }`.
+
+Auth endpoints include `POST /auth/login`, `/auth/signup`, `/auth/recover`, `/auth/session` (token exchange from the existing Supabase email callback), `/auth/refresh`, `/auth/logout`, and `/auth/password`; `GET /auth/session` returns the current identity. The response body never contains access or refresh tokens.
 
 - `GET /auth/session` — validated current identity.
 - `GET /profile` and `PATCH /profile` — read/update the authenticated user's profile.

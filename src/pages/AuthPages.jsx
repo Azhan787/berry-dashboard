@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Building2, LoaderCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContextValue';
-import { authRequest } from '../lib/auth';
+import { apiRequest, authRequest } from '../lib/auth';
 import './auth.css';
 
 function AuthShell({ title, subtitle, children }) {
@@ -10,7 +10,7 @@ function AuthShell({ title, subtitle, children }) {
   return <main className="auth-shell"><section className="auth-card">
     <div className="auth-brand"><span className="auth-brand-mark"><Building2 size={21} /></span><span>Berry</span></div>
     <h1>{title}</h1><p className="auth-subtitle">{subtitle}</p>
-    {!configured && <div className="auth-config-message">Authentication is disabled until you add Supabase URL and publishable key to the client and server environment files.</div>}
+    {!configured && <div className="auth-config-message">Authentication is disabled until the API server and its Supabase connection are configured.</div>}
     {children}
   </section></main>;
 }
@@ -36,7 +36,7 @@ export function Register() {
   const location = useLocation(); const returnTo = new URLSearchParams(location.search).get('returnTo'); const destination = returnTo?.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/onboarding';
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [notice, setNotice] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   if (session) return <Navigate to={destination} replace />;
-  const submit = async (event) => { event.preventDefault(); setBusy(true); setError(''); try { const result = await signup(email, password, name); if (result.access_token) navigate(destination, { replace: true }); else setNotice('Check your email to verify your account, then sign in.'); } catch (err) { setError(err.message); } finally { setBusy(false); } };
+  const submit = async (event) => { event.preventDefault(); setBusy(true); setError(''); try { const result = await signup(email, password, name); if (result.authenticated) navigate(destination, { replace: true }); else setNotice('Check your email to verify your account, then sign in.'); } catch (err) { setError(err.message); } finally { setBusy(false); } };
   return <AuthShell title="Create your workspace account" subtitle="Start with your team’s private business workspace."><form onSubmit={submit} className="auth-form">
     <label>Full name<input autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} /></label>
     <label>Work email<input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
@@ -67,6 +67,7 @@ export function AuthCallback() {
     let active = true;
     const finish = async () => {
       const fragment = new URLSearchParams(location.hash.slice(1));
+      if (location.hash) window.history.replaceState(null, document.title, `${location.pathname}${location.search}`);
       const authError = fragment.get('error_description') || fragment.get('error');
       if (authError) { if (active) { setError(authError); setWorking(false); } return; }
       const accessToken = fragment.get('access_token'); const refreshToken = fragment.get('refresh_token');
@@ -79,7 +80,7 @@ export function AuthCallback() {
       } catch (err) { if (active) { setError(err.message); setWorking(false); } }
     };
     finish(); return () => { active = false; };
-  }, [adoptSession, location.hash, location.search, navigate]);
+  }, [adoptSession, location.hash, location.pathname, location.search, navigate]);
   return <AuthShell title="Confirming your account" subtitle="Finishing the secure sign-in flow.">{working ? <div className="auth-loading"><LoaderCircle className="auth-spin" /> Checking confirmation…</div> : <><p className="auth-error">{error}</p><p className="auth-switch"><Link to="/login">Continue to sign in</Link></p></>}</AuthShell>;
 }
 
@@ -103,7 +104,7 @@ export function AcceptInvite() {
 
 export function ForgotPassword() {
   const [email, setEmail] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
-  const submit = async (event) => { event.preventDefault(); setBusy(true); setError(''); setNotice(''); try { const callback = new URL('/auth/callback?returnTo=%2Freset-password', window.location.origin); await authRequest(`recover?redirect_to=${encodeURIComponent(callback.toString())}`, { email }); setNotice('If this email belongs to an account, a password reset link is on its way.'); } catch (err) { setError(err.message); } finally { setBusy(false); } };
+  const submit = async (event) => { event.preventDefault(); setBusy(true); setError(''); setNotice(''); try { await authRequest('recover', { email }); setNotice('If this email belongs to an account, a password reset link is on its way.'); } catch (err) { setError(err.message); } finally { setBusy(false); } };
   return <AuthShell title="Reset your password" subtitle="We’ll send a secure password reset link to your account email."><form className="auth-form" onSubmit={submit}><label>Email<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>{error && <p className="auth-error">{error}</p>}{notice && <p className="auth-notice">{notice}</p>}<button className="auth-submit" disabled={busy}>{busy ? 'Sending…' : 'Send reset link'}</button><p className="auth-switch"><Link to="/login">Back to sign in</Link></p></form></AuthShell>;
 }
 

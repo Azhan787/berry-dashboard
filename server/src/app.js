@@ -8,9 +8,15 @@ import { publicClient } from './config/supabase.js';
 
 export const app = express();
 const origins = (process.env.CORS_ORIGINS || process.env.CLIENT_URL || 'http://localhost:5173').split(',').map((value) => value.trim());
+const isAllowedOrigin = (origin) => Boolean(origin && origins.includes(origin));
 app.disable('x-powered-by');
 app.use(helmet());
-app.use(cors({ origin: (origin, callback) => callback(null, !origin || origins.includes(origin)), allowedHeaders: ['Authorization', 'Content-Type', 'X-Organization-Id', 'Idempotency-Key', 'X-File-Name'], methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
+app.use(cors({ origin: (origin, callback) => callback(null, !origin || isAllowedOrigin(origin)), credentials: true, allowedHeaders: ['Content-Type', 'X-Organization-Id', 'Idempotency-Key', 'X-File-Name'], methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
+app.use((req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  if (!isAllowedOrigin(req.get('origin'))) return res.status(403).json({ success: false, code: 'CSRF_REJECTED', message: 'This request origin is not allowed.' });
+  next();
+});
 app.use(express.json({ limit: '256kb' }));
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }));
 app.get('/health', (_req, res) => res.json({ success: true, data: { api: 'ok', supabaseConfigured: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_PUBLISHABLE_KEY) } }));

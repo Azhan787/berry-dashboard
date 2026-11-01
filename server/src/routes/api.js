@@ -6,6 +6,7 @@ import { buildInvoicePdf, buildReportPdf } from '../services/invoicePdf.js';
 import { emailProviderConfigured, sendEmail } from '../services/emailService.js';
 import { getOrganizationSettings, organizationSettingsSchema, saveOrganizationSettings } from '../services/organizationSettings.js';
 import teamRouter from './team.js';
+import authRouter from './auth.js';
 
 const router = Router();
 const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res)).catch(next);
@@ -28,7 +29,7 @@ const profileSchema = z.object({ full_name: z.string().trim().min(1).max(120), p
 const analyticsRangeSchema = z.object({ from: z.string().date(), to: z.string().date() }).strict();
 const uploadedFileName = z.string().trim().min(1).max(255);
 
-router.get('/auth/session', requireAuth, (req, res) => res.json({ success: true, data: { id: req.user.id, email: req.user.email } }));
+router.use('/auth', authRouter);
 router.get('/profile', requireAuth, wrap(async (req, res) => {
   const { data, error } = await req.supabase.from('profiles').select('id,full_name,email,avatar_url,phone,timezone,locale,created_at,updated_at').eq('id', req.user.id).single();
   if (error) throw error;

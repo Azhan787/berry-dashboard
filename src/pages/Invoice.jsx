@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Plus, Eye, Pencil, Download, CreditCard, Send, Ban, X, Trash2 } from 'lucide-react';
 import './pages.css';
-import { apiRequest, getActiveOrganizationId, readSession } from '../lib/auth';
+import { apiDownload, apiRequest } from '../lib/auth';
 import { useAuth } from '../contexts/AuthContextValue';
 import { calculateInvoiceTotals, formatCents, getDiscountValidationError, getInvoiceItemValidationError } from '../../shared/invoicePricing.js';
 import { addInvoiceItem, createInvoiceItem, removeInvoiceItem, selectInvoiceProduct, updateInvoiceItem } from '../../shared/invoiceItems.js';
@@ -99,10 +99,8 @@ export default function Invoice() {
   const downloadPdf = async (row) => {
     setBusy(true); setError('');
     try {
-      const session = readSession(); const orgId = getActiveOrganizationId();
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1'}/invoices/${row.id}/pdf`, { headers: { Authorization: `Bearer ${session?.access_token || ''}`, 'X-Organization-Id': orgId || '' } });
-      if (!response.ok) { const result = await response.json(); throw new Error(result.message || 'Invoice download failed.'); }
-      const objectUrl = URL.createObjectURL(await response.blob()); const link = document.createElement('a'); link.href = objectUrl; link.download = `${row.invoice_number}.pdf`; link.click(); URL.revokeObjectURL(objectUrl);
+      const pdf = await apiDownload(`/invoices/${row.id}/pdf`);
+      const objectUrl = URL.createObjectURL(pdf); const link = document.createElement('a'); link.href = objectUrl; link.download = `${row.invoice_number}.pdf`; link.click(); URL.revokeObjectURL(objectUrl);
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   };
   const updateLine = (index, key, value) => setDraft((current) => ({ ...current, items: updateInvoiceItem(current.items, index, key, value) }));

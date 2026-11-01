@@ -1,18 +1,37 @@
 import { userClient } from '../config/supabase.js';
+import { publicClient } from '../config/supabase.js';
+import { readCookie, setSessionCookies, clearSessionCookies } from '../lib/authCookies.js';
 
-export async function requireAuth(req, res, next) {
-  try {
-    const token = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
-    if (!token) return res.status(401).json({ success: false, code: 'UNAUTHENTICATED', message: 'Sign in to continue.' });
-    const supabase = userClient(token);
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data.user) return res.status(401).json({ success: false, code: 'UNAUTHENTICATED', message: 'Your session is invalid or expired.' });
-    req.supabase = supabase;
-    req.user = data.user;
-    req.token = token;
-    next();
-  } catch (error) { next(error); }
+export function createRequireAuth({ getUser = async (token) => userClient(token).auth.getUser(token), refresh = async (token) => publicClient().auth.refreshSession({ refresh_token: token }), makeUserClient = userClient } = {}) {
+  return async function requireAuth(req, res, next) {
+    try {
+      let token = readCookie(req, 'berry_access_token');
+      const refreshToken = readCookie(req, 'berry_refresh_token');
+      let result = token ? await getUser(token) : { data: { user: null }, error: true };
+      const mayRotateCookie = !['GET', 'HEAD'].includes(req.method);
+      if ((!result.data?.user || result.error) && refreshToken && mayRotateCookie) {
+        const refreshed = await refresh(refreshToken);
+        if (!refreshed.error && refreshed.data?.session?.access_token && refreshed.data?.user) {
+          token = refreshed.data.session.access_token;
+          result = { data: { user: refreshed.data.user }, error: null };
+          setSessionCookies(res, refreshed.data.session);
+        } else {
+          clearSessionCookies(res);
+        }
+      }
+      if (!token || result.error || !result.data?.user) {
+        if (mayRotateCookie && (readCookie(req, 'berry_access_token') || refreshToken)) clearSessionCookies(res);
+        return res.status(401).json({ success: false, code: 'UNAUTHENTICATED', message: 'Your session is invalid or expired.' });
+      }
+      req.supabase = makeUserClient(token);
+      req.user = result.data.user;
+      req.token = token;
+      next();
+    } catch (error) { next(error); }
+  };
 }
+
+export const requireAuth = createRequireAuth();
 
 export async function requireOrganization(req, res, next) {
   try {

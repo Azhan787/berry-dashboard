@@ -41,11 +41,22 @@ test('organization settings updates reject unauthenticated requests', async (t) 
   const { port } = server.address();
   const response = await fetch(`http://127.0.0.1:${port}/api/v1/organization/settings`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'X-Organization-Id': '00000000-0000-4000-8000-000000000001' },
+    headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:5173', 'X-Organization-Id': '00000000-0000-4000-8000-000000000001' },
     body: JSON.stringify({ name: 'Unauthorized update' }),
   });
   assert.equal(response.status, 401);
   assert.equal((await response.json()).code, 'UNAUTHENTICATED');
+});
+
+test('cookie-authenticated mutations reject untrusted or missing browser origins', async (t) => {
+  const server = app.listen(0);
+  t.after(() => server.close());
+  const { port } = server.address();
+  for (const origin of ['https://attacker.example', undefined]) {
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/auth/logout`, { method: 'POST', headers: origin ? { Origin: origin } : {} });
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).code, 'CSRF_REJECTED');
+  }
 });
 
 test('PDF report renderer returns a valid PDF for populated and empty data', async () => {
